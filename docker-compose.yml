@@ -1,0 +1,62 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: alipacno-app:latest
+    container_name: alipacno_app
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    volumes:
+      - .:/var/www
+      - ./.env.docker:/var/www/.env
+      - /var/www/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alipacno-network
+
+  webserver:
+    image: nginx:1.25-alpine
+    container_name: alipacno_webserver
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - alipacno-network
+
+  db:
+    image: mysql:8.0
+    container_name: alipacno_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-alipacno_db}
+      MYSQL_USER: ${MYSQL_USER:-alipacno_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-secret}
+    ports:
+      - "3306:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-secret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alipacno-network
+
+networks:
+  alipacno-network:
+    driver: bridge
+
+volumes:
+  dbdata:
+    driver: local
