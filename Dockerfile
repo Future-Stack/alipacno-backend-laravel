@@ -1,68 +1,60 @@
-# ==========================================
-# Stage 1: Build Frontend Assets (Vite)
-# ==========================================
-FROM node:20-alpine AS node_builder
-WORKDIR /app
-COPY package*.json vite.config.js ./
-RUN npm install
-COPY resources ./resources
-COPY public ./public
-RUN npm run build
+FROM php:8.3-cli
 
-# ==========================================
-# Stage 2: PHP Application Runtime
-# ==========================================
-FROM php:8.2-fpm-alpine
+# Set working directory for the application
+WORKDIR /var/www/html
 
-# Set working directory
-WORKDIR /var/www
-
-# Install system dependencies & PHP extensions
-RUN apk add --no-cache \
-    bash \
+# Install system dependencies required for Laravel and PHP extensions
+RUN apt-get update && apt-get install -y \
+    git \
     curl \
     libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    libzip-dev \
+    libonig-dev \
+    libxml2-dev \
     zip \
     unzip \
-    icu-dev \
-    oniguruma-dev \
-    mysql-client \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-        pdo_mysql \
-        mbstring \
-        exif \
-        pcntl \
-        bcmath \
-        gd \
-        zip \
-        intl \
-        opcache
+    libzip-dev \
+    nodejs \
+    npm \
+    default-mysql-client
 
-# Get Composer
+# Clear cache to reduce image size
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install PHP extensions needed for Laravel
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+
+# Get latest Composer (PHP package manager)
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy application source code
-COPY . .
+# Copy existing application directory contents
+COPY . /var/www/html
 
-# Copy compiled frontend assets from node_builder stage
-COPY --from=node_builder /app/public/build ./public/build
+# Copy existing application directory permissions
+RUN chown -R www-data:www-data /var/www/html
 
 # Install PHP dependencies
-RUN composer install --optimize-autoloader --no-interaction
+RUN git config --global --add safe.directory /var/www/html \
+    && composer install --optimize-autoloader --no-dev
 
-# Configure storage and cache permissions
-RUN chown -R www-data:www-data /var/www \
-    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Make entrypoint script executable
-RUN chmod +x /var/www/docker/entrypoint.sh
 
-# Expose PHP-FPM port
-EXPOSE 9000
+#RUN composer install --optimize-autoloader --no-dev
 
-ENTRYPOINT ["/var/www/docker/entrypoint.sh"]
-CMD ["php-fpm"]
+# Install Node.js dependencies and build assets (for frontend)
+
+# Set proper permissions for Laravel storage and cache directories
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Copy entrypoint script to handle container startup
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Expose port 8000 for Laravel's built-in server
+EXPOSE 8000
+
+# Set the entrypoint script
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Default command to run the application
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]

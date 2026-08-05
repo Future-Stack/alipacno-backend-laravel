@@ -85,6 +85,13 @@ use App\Http\Controllers\AiRecommendationController;
 */
 
 Route::prefix('v1')->group(function () {
+    Route::get('/',function ()
+    {
+        return response()->json([
+            'status' => 200,
+            'message' => 'OK'
+        ]);
+    });
 
     // Public Authentication & OTP Endpoints
     Route::prefix('auth')->group(function () {

@@ -1,0 +1,70 @@
+services:
+  # MySQL Database Service: Provides the database for the application
+  mysql:
+    image: mysql:8.0
+    container_name: laravel_mysql
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    ports:
+      - "3307:3306" # Maps host port 3307 to container port 3306
+    volumes:
+      - mysql_data:/var/lib/mysql # Persists database data
+    networks:
+      - laravel
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  # Laravel Application Service: The main PHP application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: softvence/alipacno_backend:latest
+    platform: linux/amd64
+    container_name: laravel_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "8000:8000" # Exposes the application on port 8000
+    env_file:
+      - .env
+    volumes:
+      - app_public_storage:/var/www/html/storage/app/public # Persists storage
+    depends_on:
+      mysql:
+        condition: service_healthy # Waits for MySQL to be ready
+    networks:
+      - laravel
+
+  # Laravel Queue Worker Service: Processes background jobs
+  queue:
+    image: softvence/alipacno_backend:latest
+    platform: linux/amd64
+    container_name: laravel_queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan queue:work --verbose --tries=3 --timeout=90
+    env_file:
+      - .env
+    volumes:
+      - app_public_storage:/var/www/html/storage/app/public
+    depends_on:
+      mysql:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - laravel
+
+networks:
+  laravel:
+    driver: bridge # Creates a custom bridge network
+
+volumes:
+  mysql_data:
+    driver: local
+  app_public_storage:
+    driver: local
