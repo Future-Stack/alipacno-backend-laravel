@@ -19,12 +19,12 @@ jobs:
       # Build the Docker image from the current directory
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/kujuba_backend:latest .
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/alipacno_backend:latest .
 
       # Push the built image to the Docker Hub registry
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/kujuba_backend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/alipacno_backend:latest
 
   deploy:
     name: Deploy to VPS
