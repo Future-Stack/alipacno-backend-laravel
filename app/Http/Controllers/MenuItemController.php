@@ -36,6 +36,7 @@ class MenuItemController extends Controller
             $query->where('is_popular', filter_var($request->is_popular, FILTER_VALIDATE_BOOLEAN));
         }
 
+
         if ($request->filled('is_happy_hour_eligible')) {
             $query->where('is_happy_hour_eligible', filter_var($request->is_happy_hour_eligible, FILTER_VALIDATE_BOOLEAN));
         }
