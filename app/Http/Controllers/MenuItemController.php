@@ -20,6 +20,10 @@ class MenuItemController extends Controller
             $query->where('category_id', $request->category_id);
         }
 
+        if ($request->filled('subcategory_id')) {
+            $query->where('subcategory_id', $request->subcategory_id);
+        }
+
         if ($request->filled('category_name')) {
             $query->whereHas('category', function ($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->category_name . '%');
@@ -45,7 +49,7 @@ class MenuItemController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -60,7 +64,10 @@ class MenuItemController extends Controller
         }
 
         $perPage = $request->input('per_page', 15);
-        return response()->json($query->paginate($perPage));
+        return response()->json([
+            'success' => true,
+            'data' => $query->paginate($perPage)
+        ], 200);
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Subcategory\SubcategoryController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
@@ -120,6 +121,8 @@ Route::prefix('v1')->group(function () {
     Route::get('branches', [BranchController::class, 'index']);
     Route::get('branches/{branch}', [BranchController::class, 'show']);
     Route::get('categories', [CategoryController::class, 'index']);
+    Route::get('/subcategories', [SubcategoryController::class, 'index']);
+    Route::apiResource('subcategories', SubcategoryController::class)->except(['index']);
     Route::get('menu-items', [MenuItemController::class, 'index']);
     Route::get('menu-items/{menuItem}', [MenuItemController::class, 'show']);
 
@@ -181,6 +184,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('restaurant-tables', RestaurantTableController::class);
 
             Route::apiResource('categories', CategoryController::class)->except(['index']);
+
             Route::apiResource('menu-items', MenuItemController::class)->except(['index', 'show']);
             Route::apiResource('item-sizes', ItemSizeController::class);
             Route::post('cooking-preferences/bulk', [CookingPreferenceController::class, 'bulkStore']);
