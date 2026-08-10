@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Profile\ProfileController;
 use App\Http\Controllers\Subcategory\SubcategoryController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
@@ -142,6 +143,7 @@ Route::prefix('v1')->group(function () {
 
         // User & Addresses
         Route::apiResource('users', UserController::class);
+        Route::post('/profile_update', [ProfileController::class, 'updateProfile']);
         Route::apiResource('user-addresses', UserAddressController::class);
 
         // Shopping Cart, Orders & Payments
