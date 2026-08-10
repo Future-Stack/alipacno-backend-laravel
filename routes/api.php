@@ -79,6 +79,7 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+use App\Http\Controllers\Page\PageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -95,6 +96,10 @@ Route::prefix('v1')->group(function () {
         ]);
     });
 
+      // Public Pages
+        Route::get('pages', [PageController::class, 'index']);
+        Route::get('pages/{page_id}', [PageController::class, 'show']);
+
     // Public Authentication & OTP Endpoints
     Route::prefix('auth')->group(function () {
         Route::post('register', [AuthController::class, 'register']);
@@ -108,6 +113,7 @@ Route::prefix('v1')->group(function () {
         Route::post('phone/send-otp', [AuthController::class, 'sendPhoneOtp']);
         Route::post('phone/verify-otp', [AuthController::class, 'verifyPhoneOtp']);
         Route::post('phone/resend-otp', [AuthController::class, 'resendPhoneOtp']);
+       
 
         // Protected Auth Endpoints
         Route::middleware('auth:sanctum')->group(function () {
@@ -160,6 +166,15 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('reviews', ReviewController::class);
         Route::patch('table-reservations/{table_reservation}/status', [TableReservationController::class, 'updateStatus']);
         Route::apiResource('table-reservations', TableReservationController::class);
+        // Super Admin Only Operations
+        Route::middleware('role:super_admin')->group(function () {
+
+            // Pages (Super Admin Only)
+            Route::post('pages', [PageController::class, 'store']);
+            Route::put('pages/{page_id}', [PageController::class, 'update']);
+            Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
+
+        });
 
         // Role & Permission Protected Operations
         Route::middleware('role:super_admin,hq_admin,branch_admin')->group(function () {
@@ -224,6 +239,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('scheduled-reports', ScheduledReportController::class);
             Route::apiResource('ai-insights', AiInsightController::class);
             Route::apiResource('ai-recommendations', AiRecommendationController::class);
+
         });
 
         // POS & Kitchen Operations (KDS)
