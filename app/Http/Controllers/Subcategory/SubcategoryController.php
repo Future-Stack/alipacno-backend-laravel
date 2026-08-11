@@ -1,26 +1,21 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Subcategory;
 
+use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\Subcategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
-class CategoryController extends Controller
+class SubcategoryController extends Controller
 {
-    /**
-     * Display a listing of categories.
-     */
     public function index(Request $request)
     {
-        $query = Category::withCount('menuItems');
+        $query = Subcategory::withCount('menuItems');
 
         if ($request->boolean('is_active')) {
             $query->where('is_active', true);
-        }
-
-        if ($request->boolean('category_id')) {
-            $query->where('category_id', $request->category_id);
         }
 
         if ($request->filled('search')) {
@@ -30,10 +25,14 @@ class CategoryController extends Controller
         $query->orderBy('sort_order', 'asc')->orderBy('name', 'asc');
 
         if ($request->boolean('all')) {
-            return response()->json(['data' => $query->get()]);
+            return response()->json([
+                'success' => true,
+                'data' => $query->get()]);
         }
 
-        return response()->json($query->paginate($request->input('per_page', 50)));
+        return response()->json([
+            'success' => true,
+            'data' => $query->paginate($request->input('per_page', 50))]);
     }
 
     /**
@@ -51,23 +50,26 @@ class CategoryController extends Controller
         ]);
 
         $validated['slug'] = Str::slug($validated['name']);
-        $category = Category::create($validated);
+        $subcategories = Subcategory::create($validated);
 
-        return response()->json($category, 201);
+        return response()->json([
+            'success' => true,
+            'data' => $subcategories
+        ], 201);
     }
 
     /**
      * Display the specified category.
      */
-    public function show(Category $category)
+    public function show(Subcategory $subcategory)
     {
-        return response()->json($category->load('menuItems.sizes'));
+        return response()->json($subcategory->load('menuItems.sizes'));
     }
 
     /**
      * Update the specified category in storage.
      */
-    public function update(Request $request, Category $category)
+    public function update(Request $request, Subcategory $subcategory)
     {
         $validated = $request->validate([
             'restaurant_id' => 'nullable|exists:restaurants,id',
@@ -82,18 +84,29 @@ class CategoryController extends Controller
             $validated['slug'] = Str::slug($validated['name']);
         }
 
-        $category->update($validated);
+        $subcategory->update($validated);
 
-        return response()->json($category);
+        return response()->json($subcategory);
     }
 
     /**
      * Remove the specified category from storage.
      */
-    public function destroy(Category $category)
+    public function destroy(Subcategory $subcategory)
     {
-        $category->delete();
 
-        return response()->json(null, 204);
+        try {
+            $subcategory->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subcategory has been deleted'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
     }
 }
