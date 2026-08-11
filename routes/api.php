@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Profile\ProfileController;
+use App\Http\Controllers\Subcategory\SubcategoryController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
@@ -77,7 +79,9 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Page\PageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -86,6 +90,17 @@ use App\Http\Controllers\DashboardController;
 */
 
 Route::prefix('v1')->group(function () {
+    Route::get('/',function ()
+    {
+        return response()->json([
+            'status' => 200,
+            'message' => 'OK'
+        ]);
+    });
+
+      // Public Pages
+        Route::get('pages', [PageController::class, 'index']);
+        Route::get('pages/{page_id}', [PageController::class, 'show']);
 
     // Executive & Operational Dashboard Endpoints
     Route::get('dashboard/hq-overview', [DashboardController::class, 'hqOverview']);
@@ -106,6 +121,7 @@ Route::prefix('v1')->group(function () {
         Route::post('phone/send-otp', [AuthController::class, 'sendPhoneOtp']);
         Route::post('phone/verify-otp', [AuthController::class, 'verifyPhoneOtp']);
         Route::post('phone/resend-otp', [AuthController::class, 'resendPhoneOtp']);
+       
 
         // Protected Auth Endpoints
         Route::middleware('auth:sanctum')->group(function () {
@@ -120,6 +136,8 @@ Route::prefix('v1')->group(function () {
     Route::get('branches', [BranchController::class, 'index']);
     Route::get('branches/{branch}', [BranchController::class, 'show']);
     Route::get('categories', [CategoryController::class, 'index']);
+    Route::get('/subcategories', [SubcategoryController::class, 'index']);
+    Route::apiResource('subcategories', SubcategoryController::class)->except(['index']);
     Route::get('menu-items', [MenuItemController::class, 'index']);
     Route::get('menu-items/{menuItem}', [MenuItemController::class, 'show']);
 
@@ -139,6 +157,7 @@ Route::prefix('v1')->group(function () {
 
         // User & Addresses
         Route::apiResource('users', UserController::class);
+        Route::post('/profile_update', [ProfileController::class, 'updateProfile']);
         Route::apiResource('user-addresses', UserAddressController::class);
 
         // Shopping Cart, Orders & Payments
@@ -155,6 +174,15 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('reviews', ReviewController::class);
         Route::patch('table-reservations/{table_reservation}/status', [TableReservationController::class, 'updateStatus']);
         Route::apiResource('table-reservations', TableReservationController::class);
+        // Super Admin Only Operations
+        Route::middleware('role:super_admin')->group(function () {
+
+            // Pages (Super Admin Only)
+            Route::post('pages', [PageController::class, 'store']);
+            Route::put('pages/{page_id}', [PageController::class, 'update']);
+            Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
+
+        });
 
         // Role & Permission Protected Operations
         Route::middleware('role:super_admin,hq_admin,branch_admin')->group(function () {
@@ -181,6 +209,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('restaurant-tables', RestaurantTableController::class);
 
             Route::apiResource('categories', CategoryController::class)->except(['index']);
+
             Route::apiResource('menu-items', MenuItemController::class)->except(['index', 'show']);
             Route::apiResource('item-sizes', ItemSizeController::class);
             Route::post('cooking-preferences/bulk', [CookingPreferenceController::class, 'bulkStore']);
@@ -218,6 +247,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('scheduled-reports', ScheduledReportController::class);
             Route::apiResource('ai-insights', AiInsightController::class);
             Route::apiResource('ai-recommendations', AiRecommendationController::class);
+
         });
 
         // POS & Kitchen Operations (KDS)

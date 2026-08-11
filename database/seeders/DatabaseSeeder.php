@@ -10,7 +10,9 @@ use App\Models\KitchenStation;
 use App\Models\MenuItem;
 use App\Models\Restaurant;
 use App\Models\SpiceLevel;
+use App\Models\Subcategory;
 use App\Models\Topping;
+use App\Models\Page;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -22,7 +24,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            PagesSeeder::class,
             RolePermissionSeeder::class,
+            
         ]);
 
         // 1. Create Default Enterprise Restaurant
@@ -112,6 +116,28 @@ class DatabaseSeeder extends Seeder
             $categories[$catData['name']] = $cat;
         }
 
+        //Seed Subcategories
+        $subcategoriesData = [
+            ['name' => 'Grass fed', 'sort_order' => 1],
+            ['name' => 'Wagyu Selection', 'sort_order' => 2],
+            ['name' => 'Dry Aged', 'sort_order' => 3],
+        ];
+
+        $subcategories = [];
+        foreach ($subcategoriesData as $subCatData) {
+            $subcat = Subcategory::firstOrCreate(
+                ['name' => $subCatData['name']],
+                [
+                    'restaurant_id' => $restaurant->id,
+                    'slug' => Str::slug($subCatData['name']),
+                    'category_id' => 1,
+                    'sort_order' => $subCatData['sort_order'],
+                    'is_active' => true,
+                ]
+            );
+            $subcategories[$subCatData['name']] = $subcat;
+        }
+
         // 5. Seed Menu Items for Steaks Category
         $steaksCategory = $categories['Steaks'];
 
@@ -119,6 +145,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Grilled chicken pieces',
                 'price' => 39.99,
+                'subcategory_id' => 1,
                 'original_price' => 52.00,
                 'discount_price' => 39.99,
                 'rating' => 4.5,
@@ -131,6 +158,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Ribeye Steak',
                 'price' => 39.99,
+                'subcategory_id' => 2,
                 'original_price' => 52.00,
                 'discount_price' => 39.99,
                 'rating' => 4.8,
@@ -143,6 +171,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Vegetable Stir Fry',
                 'price' => 39.99,
+                'subcategory_id' => 3,
                 'original_price' => 52.00,
                 'discount_price' => 39.99,
                 'rating' => 4.5,
@@ -155,6 +184,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Filet Mignon',
                 'price' => 48.00,
+                'subcategory_id' => 1,
                 'original_price' => 60.00,
                 'discount_price' => 48.00,
                 'rating' => 4.9,
@@ -173,6 +203,7 @@ class DatabaseSeeder extends Seeder
                     'restaurant_id' => $restaurant->id,
                     'branch_id' => $branch1->id,
                     'category_id' => $steaksCategory->id,
+                    'subcategory_id' => $itemData['subcategory_id'],
                     'slug' => Str::slug($itemData['name']),
                     'description' => $itemData['description'],
                     'image' => $itemData['image'],
