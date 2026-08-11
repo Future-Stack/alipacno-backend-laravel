@@ -77,6 +77,7 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -85,6 +86,12 @@ use App\Http\Controllers\AiRecommendationController;
 */
 
 Route::prefix('v1')->group(function () {
+
+    // Executive & Operational Dashboard Endpoints
+    Route::get('dashboard/hq-overview', [DashboardController::class, 'hqOverview']);
+    Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints
     Route::prefix('auth')->group(function () {
