@@ -150,8 +150,8 @@ public function register(Request $request)
         $user = User::where('email', $request->email)->first();
 
         // Generate 5-digit OTP code
-        $otpCode = sprintf('%05d', mt_rand(0, 99999));
-
+        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
+        $otpCode = (string) random_int(10000, 99999);
         // Invalidate old forgot_password OTPs
         Otp::where('email', $user->email)->where('type', 'forgot_password')->delete();
 
@@ -228,7 +228,8 @@ public function register(Request $request)
         $type = $request->input('type');
 
         // Generate fresh 5-digit OTP
-        $otpCode = sprintf('%05d', mt_rand(0, 99999));
+        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
+        $otpCode = (string) random_int(10000, 99999);
 
         // Delete previous unexpired OTPs
         Otp::where('email', $user->email)->where('type', $type)->delete();
@@ -265,7 +266,8 @@ public function register(Request $request)
         $phone = preg_replace('/[^0-9+]/', '', $validated['phone']);
 
         // Generate 5-digit OTP
-        $otpCode = sprintf('%05d', mt_rand(0, 99999));
+        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
+        $otpCode = (string) random_int(10000, 99999);
 
         // Delete old phone login OTPs for this phone number
         Otp::where('phone', $phone)->where('type', 'phone_login')->delete();
