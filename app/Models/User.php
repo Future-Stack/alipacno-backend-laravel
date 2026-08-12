@@ -7,10 +7,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, Auditable;
+    use HasApiTokens, HasFactory, Notifiable, Auditable, SoftDeletes;
     /**
      * The attributes that are mass assignable.
      *
@@ -29,6 +30,7 @@ class User extends Authenticatable
         'phone_verified_at',
         'loyalty_points_balance',
         'status',
+        'terms_accepted',
     ];
 
     /**
@@ -77,6 +79,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'password' => 'hashed',
+            'terms_accepted' => 'boolean',
         ];
     }
 
