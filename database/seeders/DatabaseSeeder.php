@@ -13,6 +13,7 @@ use App\Models\SpiceLevel;
 use App\Models\Subcategory;
 use App\Models\Topping;
 use App\Models\Page;
+use App\Models\Faq;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -24,6 +25,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            FaqSeeder::class,
             PagesSeeder::class,
             RolePermissionSeeder::class,
             
