@@ -82,6 +82,7 @@ use App\Http\Controllers\AiRecommendationController;
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Page\PageController;
+use App\Http\Controllers\Faq\FaqController;
 
 /*
 |--------------------------------------------------------------------------
@@ -313,7 +314,11 @@ Route::prefix('v1')->group(function () {
             Route::patch('screen-schedules/{screen_schedule}/toggle-status', [ScreenScheduleController::class, 'toggleStatus']);
             Route::apiResource('screen-schedules', ScreenScheduleController::class);
         });
-
+      
+            // FAQ
+            Route::middleware('role:super_admin,driver')->group(function () {
+                Route::apiResource('faqs', FaqController::class);
+            });
         // Notifications
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::apiResource('notifications', NotificationController::class);
