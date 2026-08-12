@@ -54,7 +54,7 @@ php artisan migrate --force
 
 # Run database seeders
 echo "Running database seeders..."
-#php artisan db:seed --force
+php artisan db:seed --force
 
 # Clear and cache configuration
 echo "Optimizing application..."
