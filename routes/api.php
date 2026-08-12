@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Profile\ProfileController;
 use App\Http\Controllers\Subcategory\SubcategoryController;
+use App\Http\Controllers\Wishlish\WishlistController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
@@ -122,7 +123,7 @@ Route::prefix('v1')->group(function () {
         Route::post('phone/send-otp', [AuthController::class, 'sendPhoneOtp']);
         Route::post('phone/verify-otp', [AuthController::class, 'verifyPhoneOtp']);
         Route::post('phone/resend-otp', [AuthController::class, 'resendPhoneOtp']);
-       
+
 
         // Protected Auth Endpoints
         Route::middleware('auth:sanctum')->group(function () {
@@ -314,7 +315,7 @@ Route::prefix('v1')->group(function () {
             Route::patch('screen-schedules/{screen_schedule}/toggle-status', [ScreenScheduleController::class, 'toggleStatus']);
             Route::apiResource('screen-schedules', ScreenScheduleController::class);
         });
-      
+
             // FAQ
             Route::middleware('role:super_admin,driver')->group(function () {
                 Route::apiResource('faqs', FaqController::class);
@@ -323,6 +324,10 @@ Route::prefix('v1')->group(function () {
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::apiResource('notifications', NotificationController::class);
         Route::apiResource('notification-settings', NotificationSettingController::class);
+
+        //Wishlist
+        Route::get('/my-wishlist', [WishlistController::class, 'myWishlist']);
+        Route::post('/toggle-wishlist', [WishlistController::class, 'toggle']);
     });
 });
 
