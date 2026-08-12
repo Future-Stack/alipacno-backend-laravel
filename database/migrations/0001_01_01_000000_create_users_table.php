@@ -25,6 +25,10 @@ return new class extends Migration
             $table->timestamp('phone_verified_at')->nullable();
             $table->integer('loyalty_points_balance')->default(0);
             $table->enum('status', ['active', 'inactive', 'blocked'])->default('active');
+             // Terms & Conditions
+            $table->boolean('terms_accepted')->default(false);
+             // Soft Delete
+            $table->softDeletes();
             $table->rememberToken();
             $table->timestamps();
         });
