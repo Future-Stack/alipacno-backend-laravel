@@ -182,7 +182,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
         Route::delete('account-delete', [DeleteUsersController::class, 'destroy']);
         Route::apiResource('faqs', FaqController::class);
-
+         Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
        
 
         // Role & Permission Protected Operations
