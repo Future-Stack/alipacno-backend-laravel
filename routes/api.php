@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Profile\ProfileController;
 use App\Http\Controllers\Subcategory\SubcategoryController;
+use App\Http\Controllers\Wishlish\WishlistController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
@@ -83,6 +84,9 @@ use App\Http\Controllers\AiRecommendationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Page\PageController;
 
+use App\Http\Controllers\Faq\FaqController;
+use App\Http\Controllers\User\DeleteUsersController;
+
 /*
 |--------------------------------------------------------------------------
 | API Routes - Enterprise Multi-Branch Restaurant Platform
@@ -121,12 +125,13 @@ Route::prefix('v1')->group(function () {
         Route::post('phone/send-otp', [AuthController::class, 'sendPhoneOtp']);
         Route::post('phone/verify-otp', [AuthController::class, 'verifyPhoneOtp']);
         Route::post('phone/resend-otp', [AuthController::class, 'resendPhoneOtp']);
-       
+
 
         // Protected Auth Endpoints
         Route::middleware('auth:sanctum')->group(function () {
             Route::get('me', [AuthController::class, 'me']);
             Route::post('logout', [AuthController::class, 'logout']);
+
         });
     });
 
@@ -174,15 +179,13 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('reviews', ReviewController::class);
         Route::patch('table-reservations/{table_reservation}/status', [TableReservationController::class, 'updateStatus']);
         Route::apiResource('table-reservations', TableReservationController::class);
-        // Super Admin Only Operations
-        Route::middleware('role:super_admin')->group(function () {
+        Route::post('pages', [PageController::class, 'store']);
+        Route::put('pages/{page_id}', [PageController::class, 'update']);
+        Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
+        Route::delete('account-delete', [DeleteUsersController::class, 'destroy']);
+        Route::apiResource('faqs', FaqController::class);
+         Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
 
-            // Pages (Super Admin Only)
-            Route::post('pages', [PageController::class, 'store']);
-            Route::put('pages/{page_id}', [PageController::class, 'update']);
-            Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
-
-        });
 
         // Role & Permission Protected Operations
         Route::middleware('role:super_admin,hq_admin,branch_admin')->group(function () {
@@ -314,10 +317,17 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('screen-schedules', ScreenScheduleController::class);
         });
 
+
+          
+
         // Notifications
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::apiResource('notifications', NotificationController::class);
         Route::apiResource('notification-settings', NotificationSettingController::class);
+
+        //Wishlist
+        Route::get('/my-wishlist', [WishlistController::class, 'myWishlist']);
+        Route::post('/toggle-wishlist', [WishlistController::class, 'toggle']);
     });
 });
 
