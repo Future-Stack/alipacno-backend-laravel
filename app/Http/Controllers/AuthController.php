@@ -13,93 +13,83 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-   /**
-  * Register a new user & send 5-digit OTP verification email.
-  */
-public function register(Request $request)
-{
-    $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'email' => 'required|string|email|max:255|unique:users',
-        'phone' => 'nullable|string|max:20|unique:users',
-        'password' => 'required|string|min:8|confirmed',
-        'avatar' => 'nullable',
-        'user_image' => 'nullable',
-        'user_type' => 'nullable|string|in:customer,admin,staff,super_admin,hq_admin,branch_admin',
-        'role_id' => 'nullable|exists:roles,id',
-
-        // Terms & Conditions
-        'terms_accepted' => 'required|accepted',
-    ]);
-
-    $validated['password'] = Hash::make($validated['password']);
-    $validated['user_type'] = $validated['user_type'] ?? 'customer';
-    $validated['status'] = 'active';
-    $validated['email_verified_at'] = null;
-
-    // Handle avatar image file upload if present
-    if ($request->hasFile('avatar')) {
-        $request->validate([
-            'avatar' => 'image|mimes:jpeg,png,jpg,webp,gif|max:2048',
+    /**
+     * Register a new user & send -digit OTP verification email.
+     */
+    public function register(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'nullable|string|max:20|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+            'avatar' => 'nullable',
+            'user_image' => 'nullable',
+            'user_type' => 'nullable|string|in:customer,admin,staff,super_admin,hq_admin,branch_admin',
+            'role_id' => 'nullable|exists:roles,id',
         ]);
 
-        $validated['avatar'] = $request->file('avatar')
-            ->store('users/avatars', 'public');
-    }
+        $validated['password'] = Hash::make($validated['password']);
+        $validated['user_type'] = $validated['user_type'] ?? 'customer';
+        $validated['status'] = 'active';
+        $validated['email_verified_at'] = null; // Unverified until OTP confirmation
 
-    // Handle user_image file upload if present
-    if ($request->hasFile('user_image')) {
-        $request->validate([
-            'user_image' => 'image|mimes:jpeg,png,jpg,webp,gif|max:2048',
+        // Handle avatar image file upload if present
+        if ($request->hasFile('avatar')) {
+            $request->validate(['avatar' => 'image|mimes:jpeg,png,jpg,webp,gif|max:10240']);
+            $validated['avatar'] = $request->file('avatar')->store('users/avatars', 'public');
+        }
+
+        // Handle user_image file upload if present
+        if ($request->hasFile('user_image')) {
+            $request->validate(['user_image' => 'image|mimes:jpeg,png,jpg,webp,gif|max:10240']);
+            $validated['user_image'] = $request->file('user_image')->store('users/images', 'public');
+        }
+
+        $user = User::create($validated);
+
+        // Generate 5-digit OTP code
+        $otpCode = sprintf('%05d', mt_rand(0, 99999));
+
+        // Invalidate old registration OTPs for this email
+        Otp::where('email', $user->email)->where('type', 'registration')->delete();
+
+        // Create new OTP record
+        Otp::create([
+            'email' => $user->email,
+            'otp' => $otpCode,
+            'type' => 'registration',
+            'expires_at' => now()->addMinutes(10),
         ]);
 
-        $validated['user_image'] = $request->file('user_image')
-            ->store('users/images', 'public');
+        // Send OTP Email
+        try {
+            Mail::to($user->email)->send(new SendOtpMail($otpCode, 'registration', $user->name));
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Registration OTP Email Error: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'message' => 'Registration successful! A 5-digit verification code has been sent to your email.',
+            'user' => $user,
+            'otp_sent' => true,
+        ], 201);
     }
-
-    // Create user
-    $user = User::create($validated);
-
-    // Generate 5-digit OTP (10000 - 99999)
-    $otpCode = (string) random_int(10000, 99999);
-
-    // Invalidate old registration OTPs for this email
-    Otp::where('email', $user->email)
-        ->where('type', 'registration')
-        ->delete();
-
-    // Create new OTP record
-    Otp::create([
-        'email' => $user->email,
-        'otp' => $otpCode,
-        'type' => 'registration',
-        'expires_at' => now()->addMinutes(10),
-    ]);
-
-    // Send OTP Email
-    try {
-        Mail::to($user->email)->send(
-            new SendOtpMail(
-                $otpCode,
-                'registration',
-                $user->name
-            )
-        );
-    } catch (\Exception $e) {
-        \Illuminate\Support\Facades\Log::error(
-            'Registration OTP Email Error: ' . $e->getMessage()
-        );
-    }
-
-    return response()->json([
-        'message' => 'Registration successful! A 5-digit verification code has been sent to your email.',
-        'user' => $user,
-        'otp_sent' => true,
-    ], 201);
-}
 
     /**
-     * Verify registration 5-digit OTP code & complete account activation.
+     * Verify 5-digit OTP code.
+     * Route: verify-otp (unchanged) — used by BOTH:
+     *  - Registration email verification screen
+     *  - Forgot-password "Verification" screen (Step 2 in the 3-screen flow)
+     *
+     * No 'type' field needed from the frontend — the latest OTP record for
+     * this email tells us which flow it belongs to.
+     *
+     * - registration -> marks email verified, revokes old tokens, logs the
+     *   user in (same as before).
+     * - forgot_password -> marks the OTP as verified (NOT used yet) and
+     *   returns success, so the app can move to the "Reset Password"
+     *   screen. resetPassword() below checks this verified flag.
      */
     public function verifyRegistrationOtp(Request $request)
     {
@@ -109,7 +99,6 @@ public function register(Request $request)
         ]);
 
         $otpRecord = Otp::where('email', $request->email)
-            ->where('type', 'registration')
             ->latest()
             ->first();
 
@@ -119,10 +108,21 @@ public function register(Request $request)
             ], 422);
         }
 
-        // Mark OTP as used
+        if ($otpRecord->type === 'forgot_password') {
+            // Just confirm the code is correct and mark it verified (not
+            // used yet) — resetPassword() checks this flag by email.
+            $otpRecord->update(['verified_at' => now()]);
+
+            return response()->json([
+                'message' => 'OTP verified. You can now reset your password.',
+                'email' => $request->email,
+                'verified' => true,
+            ]);
+        }
+
+        // Registration flow (default / fallback)
         $otpRecord->update(['used_at' => now()]);
 
-        // Mark user email as verified
         $user = User::where('email', $request->email)->first();
         $user->email_verified_at = now();
         $user->save();
@@ -139,7 +139,7 @@ public function register(Request $request)
     }
 
     /**
-     * Send forgot password 5-digit OTP to user email.
+     * Step 1 (Forgot Password screen): send 5-digit OTP to user email.
      */
     public function forgotPassword(Request $request)
     {
@@ -150,8 +150,8 @@ public function register(Request $request)
         $user = User::where('email', $request->email)->first();
 
         // Generate 5-digit OTP code
-        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
-        $otpCode = (string) random_int(10000, 99999);
+        $otpCode = sprintf('%05d', mt_rand(0, 99999));
+
         // Invalidate old forgot_password OTPs
         Otp::where('email', $user->email)->where('type', 'forgot_password')->delete();
 
@@ -177,13 +177,17 @@ public function register(Request $request)
     }
 
     /**
-     * Reset password using 5-digit OTP code.
+     * Step 3 (Reset Password screen): set the new password.
+     * This screen only has password + confirm password fields — plus
+     * email, which the app carries forward from Step 1/2 (no OTP field
+     * shown here). We check that this email's forgot_password OTP was
+     * already verified in Step 2 (verify-otp), then mark it fully used
+     * once the password is actually changed.
      */
     public function resetPassword(Request $request)
     {
         $request->validate([
             'email' => 'required|email|exists:users,email',
-            'otp' => 'required|string|size:5',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
@@ -192,13 +196,19 @@ public function register(Request $request)
             ->latest()
             ->first();
 
-        if (!$otpRecord || !$otpRecord->isValid($request->otp)) {
+        if (!$otpRecord || is_null($otpRecord->verified_at) || !is_null($otpRecord->used_at)) {
             return response()->json([
-                'message' => 'Invalid or expired OTP code.'
+                'message' => 'Please verify your OTP code first.'
             ], 422);
         }
 
-        // Mark OTP as used
+        if (now()->greaterThan($otpRecord->expires_at)) {
+            return response()->json([
+                'message' => 'Your verification code has expired. Please request a new one.'
+            ], 422);
+        }
+
+        // Mark OTP as fully used
         $otpRecord->update(['used_at' => now()]);
 
         // Reset user password
@@ -216,22 +226,41 @@ public function register(Request $request)
 
     /**
      * Resend fresh 5-digit OTP to user email.
+     * Route: resend-otp (unchanged) — used from both the registration
+     * "verify-otp" screen and the forgot-password "Verification" screen.
+     *
+     * 'type' is now OPTIONAL. If the frontend doesn't send it (as in the
+     * forgot-password screens, which have no type selector), the latest
+     * OTP record for this email is looked up and its type is reused.
      */
     public function resendOtp(Request $request)
     {
         $request->validate([
             'email' => 'required|email|exists:users,email',
-            'type' => 'required|string|in:registration,forgot_password',
+            'type' => 'nullable|string|in:registration,forgot_password',
         ]);
 
         $user = User::where('email', $request->email)->first();
         $type = $request->input('type');
 
-        // Generate fresh 5-digit OTP
-        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
-        $otpCode = (string) random_int(10000, 99999);
+        // Auto-detect type from the latest OTP record for this email
+        // when the frontend doesn't send it explicitly.
+        if (!$type) {
+            $latestOtp = Otp::where('email', $user->email)->latest()->first();
 
-        // Delete previous unexpired OTPs
+            if (!$latestOtp) {
+                return response()->json([
+                    'message' => 'No previous verification request found for this email.'
+                ], 422);
+            }
+
+            $type = $latestOtp->type;
+        }
+
+        // Generate fresh 5-digit OTP
+        $otpCode = sprintf('%05d', mt_rand(0, 99999));
+
+        // Delete previous unexpired OTPs of this type
         Otp::where('email', $user->email)->where('type', $type)->delete();
 
         // Create new OTP
@@ -266,8 +295,7 @@ public function register(Request $request)
         $phone = preg_replace('/[^0-9+]/', '', $validated['phone']);
 
         // Generate 5-digit OTP
-        // $otpCode = sprintf('%05d', mt_rand(0, 99999));
-        $otpCode = (string) random_int(10000, 99999);
+        $otpCode = sprintf('%05d', mt_rand(0, 99999));
 
         // Delete old phone login OTPs for this phone number
         Otp::where('phone', $phone)->where('type', 'phone_login')->delete();
@@ -355,42 +383,37 @@ public function register(Request $request)
     /**
      * Resend fresh 5-digit OTP code to user's phone.
      */
-    /**
- * Resend fresh 5-digit OTP code to user's phone.
- */
-public function resendPhoneOtp(Request $request)
-{
-    $validated = $request->validate([
-        'phone' => 'required|string',
-    ]);
+    public function resendPhoneOtp(Request $request)
+    {
+        $validated = $request->validate([
+            'phone' => 'required|string',
+        ]);
 
-    $phone = preg_replace('/[^0-9+]/', '', $validated['phone']);
+        $phone = preg_replace('/[^0-9+]/', '', $validated['phone']);
 
-    // Generate fresh 5-digit OTP (10000 - 99999)
-    $otpCode = (string) random_int(10000, 99999);
+        // Generate fresh 5-digit OTP
+        $otpCode = sprintf('%05d', mt_rand(0, 99999));
 
-    // Delete old OTPs
-    Otp::where('phone', $phone)
-        ->where('type', 'phone_login')
-        ->delete();
+        // Delete old OTPs
+        Otp::where('phone', $phone)->where('type', 'phone_login')->delete();
 
-    // Create new OTP
-    Otp::create([
-        'phone' => $phone,
-        'otp' => $otpCode,
-        'type' => 'phone_login',
-        'expires_at' => now()->addMinutes(10),
-    ]);
+        // Create new OTP
+        Otp::create([
+            'phone' => $phone,
+            'otp' => $otpCode,
+            'type' => 'phone_login',
+            'expires_at' => now()->addMinutes(10),
+        ]);
 
-    $maskedPhone = $this->maskPhoneNumber($phone);
+        $maskedPhone = $this->maskPhoneNumber($phone);
 
-    return response()->json([
-        'message' => "A fresh 5-digit verification code has been sent to {$maskedPhone}",
-        'phone' => $phone,
-        'masked_phone' => $maskedPhone,
-        'otp_code' => config('app.debug') ? $otpCode : null,
-    ]);
-}
+        return response()->json([
+            'message' => "A fresh 5-digit verification code has been sent to {$maskedPhone}",
+            'phone' => $phone,
+            'masked_phone' => $maskedPhone,
+            'otp_code' => config('app.debug') ? $otpCode : null,
+        ]);
+    }
 
     /**
      * Helper to mask phone number into format +1 (xxx) xxx-XXXX or similar.

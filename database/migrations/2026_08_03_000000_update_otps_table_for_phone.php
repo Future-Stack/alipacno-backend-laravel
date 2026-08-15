@@ -15,6 +15,8 @@ return new class extends Migration
             $table->string('email')->nullable()->change();
             $table->string('phone')->nullable()->after('email')->index();
             $table->string('type')->default('registration')->change();
+            $table->timestamp('verified_at')->nullable();
+            $table->string('otp', 10)->change();
         });
     }
 
