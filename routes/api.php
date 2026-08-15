@@ -317,16 +317,7 @@ Route::prefix('v1')->group(function () {
         });
 
 
-            // FAQ
-            Route::middleware('role:super_admin,driver')->group(function () {
-                Route::apiResource('faqs', FaqController::class);
-            });
-
-
-            // FAQ with permsiion
-            // Route::middleware('role:super_admin,driver')->group(function () {
-            //     Route::apiResource('faqs', FaqController::class);
-            // });
+          
 
         // Notifications
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
