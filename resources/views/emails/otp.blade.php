@@ -61,7 +61,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Alipacno Platform</h1>
+            <h1>Pacino Platform</h1>
         </div>
         <div class="content">
             <p>Hello, <strong>{{ $name }}</strong>!</p>

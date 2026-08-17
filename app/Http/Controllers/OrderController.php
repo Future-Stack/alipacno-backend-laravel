@@ -9,6 +9,8 @@ use App\Models\KitchenOrder;
 use App\Models\KitchenStation;
 use App\Models\LoyaltyPoint;
 use App\Models\User;
+use App\Models\Branch;
+use App\Models\UserAddress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +84,7 @@ class OrderController extends Controller
             'customer_name' => 'nullable|string|max:255',
             'customer_phone' => 'nullable|string|max:50',
             'delivery_address' => 'nullable|string',
+            'address_id' => 'nullable|exists:user_addresses,id',
             'table_id' => 'nullable|exists:restaurant_tables,id',
             'notes' => 'nullable|string',
             'tip' => 'nullable|numeric|min:0',
@@ -107,6 +110,20 @@ class OrderController extends Controller
             }
 
             $orderNumber = 'ORD-' . strtoupper(Str::random(6));
+
+            $branch = !empty($validated['branch_id'])
+                ? Branch::find($validated['branch_id'])
+                : null;
+
+            $userAddress = null;
+            if (!empty($validated['address_id'])) {
+                $userAddress = UserAddress::find($validated['address_id']);
+            } elseif ($user) {
+                $userAddress = UserAddress::where('user_id', $user->id)
+                    ->orderByDesc('is_default')
+                    ->latest()
+                    ->first();
+            }
 
             $subtotal = 0;
             $orderItemsData = [];
@@ -178,8 +195,8 @@ class OrderController extends Controller
                 LoyaltyPoint::create([
                     'user_id' => $user->id,
                     'points' => -$loyaltyUsed,
-                    'type' => 'redeemed',
-                    'description' => 'Redeemed on Order #' . $orderNumber,
+                    'type' => 'redeem',
+                    'remarks' => 'Redeemed on Order #' . $orderNumber,
                 ]);
             }
 
@@ -189,7 +206,9 @@ class OrderController extends Controller
             $order = Order::create([
                 'order_number' => $orderNumber,
                 'user_id' => $user?->id,
+                'restaurant_id' => $branch?->restaurant_id,
                 'branch_id' => $validated['branch_id'] ?? null,
+                'address_id' => $userAddress?->id,
                 'table_id' => $validated['table_id'] ?? null,
                 'order_type' => $validated['order_type'],
                 'order_status' => 'pending',
@@ -207,7 +226,7 @@ class OrderController extends Controller
                 'estimated_delivery_time' => now()->addMinutes(30),
                 'customer_name' => $validated['customer_name'] ?? $user?->name,
                 'customer_phone' => $validated['customer_phone'] ?? $user?->phone,
-                'delivery_address' => $validated['delivery_address'] ?? null,
+                'delivery_address' => $validated['delivery_address'] ?? $userAddress?->address ?? null,
                 'notes' => $validated['notes'] ?? null,
             ]);
 
@@ -221,19 +240,19 @@ class OrderController extends Controller
                 $user->increment('loyalty_points_balance', $loyaltyEarned);
                 LoyaltyPoint::create([
                     'user_id' => $user->id,
+                    'order_id' => $order->id,
                     'points' => $loyaltyEarned,
-                    'type' => 'earned',
-                    'description' => 'Earned from Order #' . $orderNumber,
-                    'reference_order_id' => $order->id,
+                    'type' => 'earn',
+                    'remarks' => 'Earned from Order #' . $orderNumber,
                 ]);
-            }
+                }
 
             // Create Kitchen Order for KDS
             $station = KitchenStation::where('branch_id', $order->branch_id)->first();
             KitchenOrder::create([
                 'order_id' => $order->id,
                 'kitchen_station_id' => $station?->id,
-                'status' => 'pending',
+                'status' => 'new',
             ]);
 
             // Clear Cart if order was created from cart

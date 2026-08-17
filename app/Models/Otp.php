@@ -18,6 +18,7 @@ class Otp extends Model
         'type',
         'expires_at',
         'used_at',
+        'verified_at', 
     ];
 
     protected function casts(): array
