@@ -13,7 +13,7 @@ class Branch extends Model
 
     protected $table = 'branches';
 
-    protected $fillable = ['restaurant_id', 'name', 'branch_code', 'phone', 'email', 'address', 'city', 'postcode', 'postal_code', 'latitude', 'longitude', 'opening_time', 'closing_time', 'is_active', 'status'];
+    protected $guarded = [];
 
     public function restaurant()
     {

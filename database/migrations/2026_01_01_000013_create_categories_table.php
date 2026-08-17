@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('categories', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->nullable();
+            $table->foreignId('branch_id')->nullable();
             $table->string('name');
             $table->string('slug');
             $table->string('icon')->nullable();

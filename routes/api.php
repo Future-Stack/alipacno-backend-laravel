@@ -203,7 +203,7 @@ Route::prefix('v1')->group(function () {
             Route::post('staff-attendance/{staff_attendance}/clock-out', [StaffAttendanceController::class, 'clockOut']);
             Route::apiResource('staff-attendance', StaffAttendanceController::class);
             Route::apiResource('restaurants', RestaurantController::class)->except(['index', 'show']);
-            Route::apiResource('branches', BranchController::class);
+            Route::apiResource('branches', BranchController::class)->except('index','show');
             Route::get('branch-settings/branch/{branch}', [BranchSettingController::class, 'getByBranch']);
             Route::apiResource('branch-settings', BranchSettingController::class);
             Route::apiResource('delivery-areas', DeliveryAreaController::class);
@@ -318,7 +318,7 @@ Route::prefix('v1')->group(function () {
         });
 
 
-          
+
 
         // Notifications
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);

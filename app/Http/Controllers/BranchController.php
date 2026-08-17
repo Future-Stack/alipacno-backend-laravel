@@ -12,7 +12,7 @@ class BranchController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Branch::with(['settings', 'restaurant']);
+        $query = Branch::with(['restaurant']);
 
         if ($request->boolean('is_active')) {
             $query->where('is_active', true);
@@ -22,8 +22,8 @@ class BranchController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('address', 'like', "%{$search}%")
-                  ->orWhere('city', 'like', "%{$search}%");
+                    ->orWhere('address', 'like', "%{$search}%")
+                    ->orWhere('city', 'like', "%{$search}%");
             });
         }
 
@@ -52,19 +52,21 @@ class BranchController extends Controller
             'opening_time' => 'nullable|string',
             'closing_time' => 'nullable|string',
             'is_active' => 'nullable|boolean',
+            'tax_rate' => 'nullable|numeric|min:0',
+            'minimum_order' => 'nullable|numeric|min:0',
+            'delivery_radius' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|max:10',
+            'timezone' => 'nullable|string|max:50',
         ]);
 
         $branch = Branch::create($validated);
 
-        // Create default settings for branch
-        $branch->settings()->create([
-            'delivery_radius_km' => 10,
-            'min_order_amount' => 15.00,
-            'delivery_fee' => 0.00,
-            'vat_percentage' => 10,
-        ]);
 
-        return response()->json($branch->load('settings'), 201);
+        return response()->json([
+            'status'=>true,
+            'message'=>'Branch updated successfully',
+            'data'=>$branch
+        ],201);
     }
 
     /**
@@ -72,7 +74,12 @@ class BranchController extends Controller
      */
     public function show(Branch $branch)
     {
-        return response()->json($branch->load(['settings', 'restaurant', 'tables', 'deliveryAreas']));
+
+        return response()->json([
+            'status'=>true,
+            'message'=>'Branch fetched successfully',
+            'data'=> $branch->load([ 'restaurant'])
+        ]);
     }
 
     /**
@@ -90,14 +97,23 @@ class BranchController extends Controller
             'email' => 'nullable|email|max:255',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
+            'is_active' => 'sometimes|boolean',
+            'tax_rate' => 'nullable|numeric|min:0',
+            'minimum_order' => 'nullable|numeric|min:0',
+            'delivery_radius' => 'nullable|numeric|min:0',
             'opening_time' => 'nullable|string',
             'closing_time' => 'nullable|string',
-            'is_active' => 'sometimes|boolean',
+            'currency' => 'nullable|string|max:10',
+            'timezone' => 'nullable|string|max:50',
         ]);
 
         $branch->update($validated);
 
-        return response()->json($branch->load('settings'));
+        return response()->json([
+            'status'=>true,
+            'message'=>'Branch updated successfully',
+            'data'=>$branch
+        ]);
     }
 
     /**
@@ -107,6 +123,9 @@ class BranchController extends Controller
     {
         $branch->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'status' => true,
+            'message' => 'Branch Deleted'
+        ], 200);
     }
 }

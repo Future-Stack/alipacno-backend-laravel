@@ -27,7 +27,7 @@ class SubcategoryController extends Controller
         if ($request->boolean('all')) {
             return response()->json([
                 'success' => true,
-                'data' => $query->get()]);
+                'data' => $query->with('category')->get()]);
         }
 
         return response()->json([
@@ -42,6 +42,7 @@ class SubcategoryController extends Controller
     {
         $validated = $request->validate([
             'restaurant_id' => 'nullable|exists:restaurants,id',
+            'category_id' => 'required|exists:categories,id',
             'name' => 'required|string|max:255',
             'icon' => 'nullable|string',
             'image' => 'nullable|string',
@@ -73,6 +74,7 @@ class SubcategoryController extends Controller
     {
         $validated = $request->validate([
             'restaurant_id' => 'nullable|exists:restaurants,id',
+            'category_id' => 'required|exists:categories,id',
             'name' => 'sometimes|string|max:255',
             'icon' => 'nullable|string',
             'image' => 'nullable|string',
