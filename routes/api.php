@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Profile\ProfileController;
+use App\Http\Controllers\Stripe\StripeController;
 use App\Http\Controllers\Subcategory\SubcategoryController;
 use App\Http\Controllers\Wishlish\WishlistController;
 use Illuminate\Support\Facades\Route;
@@ -330,5 +331,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/my-wishlist', [WishlistController::class, 'myWishlist']);
         Route::post('/toggle-wishlist', [WishlistController::class, 'toggle']);
     });
+
+    //Stripe
+    Route::get('/Order/success', [StripeController::class, 'OrderSuccess'])->name('booking.success');
+    Route::get('/Order/cancel', [StripeController::class, 'OrderCancel'])->name('booking.cancel');
 });
 

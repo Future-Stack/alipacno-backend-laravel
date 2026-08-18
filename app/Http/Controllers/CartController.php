@@ -36,6 +36,8 @@ class CartController extends Controller
             'delivery_postcode' => 'nullable|string',
             'branch_id' => 'nullable|exists:branches,id',
             'tip' => 'nullable|numeric|min:0',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
         ]);
 
         $cart = $this->getOrCreateCart($request);

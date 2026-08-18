@@ -53,6 +53,14 @@ class CartItemController extends Controller
             }
         }
 
+        // Add toppings price if applicable
+        if (!empty($validated['toppings'])) {
+            $toppings = Topping::whereIn('id', $validated['toppings'])->get();
+            foreach ($toppings as $topping) {
+                $unitPrice += $topping->price;
+            }
+        }
+
         // Check for existing identical cart item
         $existingItem = CartItem::where('cart_id', $validated['cart_id'])
             ->where('menu_item_id', $validated['menu_item_id'])

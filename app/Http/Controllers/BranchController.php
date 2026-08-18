@@ -40,7 +40,7 @@ class BranchController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'restaurant_id' => 'required|exists:restaurants,id',
+            'restaurant_id' => 'nullable|exists:restaurants,id',
             'name' => 'required|string|max:255',
             'address' => 'required|string',
             'city' => 'nullable|string|max:255',

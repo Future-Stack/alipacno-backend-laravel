@@ -14,6 +14,7 @@ use App\Models\UserAddress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Stripe\StripeClient;
 
 class OrderController extends Controller
 {
@@ -60,8 +61,8 @@ class OrderController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
-                  ->orWhere('customer_name', 'like', "%{$search}%")
-                  ->orWhere('customer_phone', 'like', "%{$search}%");
+                    ->orWhere('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_phone', 'like', "%{$search}%");
             });
         }
 
@@ -201,7 +202,7 @@ class OrderController extends Controller
             }
 
             $total = max(0, $subtotal + $vat + $deliveryFee + $tip + $riderTip - $discount);
-            $loyaltyEarned = (int) floor($subtotal / 10) * 5;
+            $loyaltyEarned = (int)floor($subtotal / 10) * 5;
 
             $order = Order::create([
                 'order_number' => $orderNumber,
@@ -212,7 +213,7 @@ class OrderController extends Controller
                 'table_id' => $validated['table_id'] ?? null,
                 'order_type' => $validated['order_type'],
                 'order_status' => 'pending',
-                'payment_status' => 'paid', // Auto-set paid for checkout simulation
+                'payment_status' => 'pending', // Auto-set paid for checkout simulation
                 'payment_method' => $validated['payment_method'],
                 'subtotal' => $subtotal,
                 'vat' => $vat,
@@ -245,7 +246,7 @@ class OrderController extends Controller
                     'type' => 'earn',
                     'remarks' => 'Earned from Order #' . $orderNumber,
                 ]);
-                }
+            }
 
             // Create Kitchen Order for KDS
             $station = KitchenStation::where('branch_id', $order->branch_id)->first();
@@ -261,13 +262,63 @@ class OrderController extends Controller
                 $cart->update(['subtotal' => 0, 'vat' => 0, 'total' => 0]);
             }
 
-            return response()->json($order->load([
-                'items.menuItem',
-                'items.size',
-                'items.cookingPreference',
-                'items.spiceLevel',
-                'items.toppings',
-            ]), 201);
+
+            if ($order->payment_method === 'stripe') {
+
+                $payment = $order->payment()->create([
+                    'method' => 'stripe',
+                    'payment_method' => 'stripe',
+                    'stripe_payment_intent' => null,
+                    'transaction_id' => uniqid(),
+                    'amount' => $order->total,
+                    'currency' => 'usd',
+                    'status' => 'pending',
+                ]);
+
+                //Payment Gateway Starts
+                $stripe = new StripeClient(config('services.stripe.secret'));
+
+                $session = $stripe->checkout->sessions->create([
+                    'line_items' => [[
+                        'price_data' => [
+                            'currency' => 'usd',
+                            'product_data' => [
+                                'name' => 'Restaurant Menuitem Order',
+                            ],
+                            'unit_amount' => (int)($order->total * 100),
+                        ],
+                        'quantity' => 1,
+                    ]],
+                    'mode' => 'payment',
+
+                    'metadata' => [
+                        'payment_id' => $payment->id,
+                    ],
+
+
+
+                    // ✅ IMPORTANT: api + v1 prefix
+                    'success_url' => url('/api/v1/order/success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => url('/api/v1/order/cancel'),
+                ]);
+
+
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order placed Successfully',
+                'data' => $order->load([
+                    'items.menuItem',
+                    'items.size',
+                    'items.cookingPreference',
+                    'items.spiceLevel',
+                    'items.toppings',
+                ]),
+                'stripe' => $session ?? null
+            ], 201);
+
+
         });
     }
 
