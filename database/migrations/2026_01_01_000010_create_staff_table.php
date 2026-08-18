@@ -13,16 +13,45 @@ return new class extends Migration
     {
         Schema::create('staff', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('branch_id');
+
+            // Employee Information
+            $table->string('employee_id')->unique();
             $table->string('name');
+            $table->string('image')->nullable();
             $table->string('email')->nullable();
             $table->string('phone');
-            $table->foreignId('role_id')->nullable();
+
+            // Organization
+            $table->foreignId('branch_id')
+                ->constrained('branches')
+                ->cascadeOnDelete();
+
+            $table->foreignId('role_id')
+                ->nullable()
+                ->constrained('roles')
+                ->nullOnDelete();
+
+            // Shift
+            // Example: Morning 8-5, Evening 4-12, Night 12-8
+            $table->string('shift')->nullable();
+
+            // Attendance
+            $table->time('time_in')->nullable();
+            $table->time('time_out')->nullable();
+
+            // Staff Status
+            // Example: active, inactive, on_leave, on_break, off_duty, absent
+            $table->string('status')->default('active');
+
+            // Salary & Commission
             $table->decimal('salary', 10, 2)->nullable();
             $table->decimal('commission', 5, 2)->nullable();
+
+            // Employment
             $table->date('hire_date')->nullable();
-            $table->enum('status', ['active', 'inactive', 'on_leave'])->default('active');
+
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
