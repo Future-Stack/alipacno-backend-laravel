@@ -148,6 +148,7 @@ Route::prefix('v1')->group(function () {
 
     // Public Cart & Checkout (Guest Session & Customer Support)
     Route::get('carts', [CartController::class, 'index']);
+    Route::get('carts/{cart}', [CartController::class, 'show']);
     Route::post('carts', [CartController::class, 'store']);
     Route::post('cart-items', [CartItemController::class, 'store']);
     Route::put('cart-items/{cartItem}', [CartItemController::class, 'update']);
@@ -166,7 +167,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('user-addresses', UserAddressController::class);
 
         // Shopping Cart, Orders & Payments
-        Route::apiResource('carts', CartController::class)->except(['index', 'store']);
+        Route::apiResource('carts', CartController::class)->except(['index', 'store','show']);
         Route::apiResource('cart-items', CartItemController::class)->except(['store', 'update', 'destroy']);
         Route::apiResource('orders', OrderController::class)->except(['store']);
         Route::apiResource('order-items', OrderItemController::class);
