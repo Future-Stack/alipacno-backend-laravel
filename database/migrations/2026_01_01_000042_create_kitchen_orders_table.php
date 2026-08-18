@@ -16,7 +16,8 @@ return new class extends Migration
             $table->foreignId('order_id');
             $table->foreignId('kitchen_station_id');
             $table->foreignId('chef_id')->nullable();
-            $table->enum('status', ['new', 'preparing', 'delayed', 'ready', 'completed'])->default('new');
+            $table->enum('status', ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'])
+                  ->default('pending');
             $table->timestamp('started_at')->nullable();
             $table->timestamp('ready_at')->nullable();
             $table->timestamp('completed_at')->nullable();

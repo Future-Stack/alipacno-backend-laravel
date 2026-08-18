@@ -34,28 +34,30 @@ class PosSessionController extends Controller
     {
         $validated = $request->validate([
             'branch_id' => 'required|exists:branches,id',
-            'opening_balance' => 'required|numeric|min:0',
+            'opening_cash' => 'required|numeric|min:0',
         ]);
 
         $user = $request->user();
 
-        // Close any existing open session for this user/branch
-        PosSession::where('user_id', $user?->id)
+        PosSession::where(function($q) use ($user) {
+                $q->where('staff_id', $user?->id)
+                ->orWhere('user_id', $user?->id);
+            })
             ->where('branch_id', $validated['branch_id'])
             ->where('status', 'open')
             ->update(['status' => 'closed', 'closed_at' => now()]);
 
         $session = PosSession::create([
-            'branch_id' => $validated['branch_id'],
-            'user_id' => $user?->id,
-            'opening_balance' => $validated['opening_balance'],
-            'cash_sales' => 0,
-            'card_sales' => 0,
-            'status' => 'open',
-            'opened_at' => now(),
+            'branch_id'    => $validated['branch_id'],
+            'user_id'      => $user?->id,
+            'staff_id'     => $user?->id,
+            'opening_cash' => $validated['opening_cash'],
+            'total_sales'  => 0,
+            'status'       => 'open',
+            'opened_at'    => now(),
         ]);
 
-        return response()->json($session->load(['user', 'branch']), 201);
+        return response()->json($session->load(['staff', 'branch']), 201);
     }
 
     /**
