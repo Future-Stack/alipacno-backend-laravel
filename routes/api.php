@@ -333,7 +333,8 @@ Route::prefix('v1')->group(function () {
     });
 
     //Stripe
-    Route::get('/Order/success', [StripeController::class, 'OrderSuccess'])->name('booking.success');
-    Route::get('/Order/cancel', [StripeController::class, 'OrderCancel'])->name('booking.cancel');
+    Route::get('/order/success', [StripeController::class, 'OrderSuccess']);
+    Route::get('/order/cancel', [StripeController::class, 'OrderCancel']);
+
 });
 
