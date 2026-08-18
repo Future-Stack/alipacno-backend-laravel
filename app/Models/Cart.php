@@ -25,6 +25,8 @@ class Cart extends Model
         'tip',
         'total',
         'loyalty_points',
+        'latitude',
+        'longitude',
     ];
 
     public function user()
