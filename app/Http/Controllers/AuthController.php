@@ -6,6 +6,7 @@ use App\Mail\SendOtpMail;
 use App\Models\Otp;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -488,7 +489,7 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = $request->user()->load(['addresses']);
+        $user = Auth::user()->load(['addresses']);
 
         return response()->json([
             'user' => $user,

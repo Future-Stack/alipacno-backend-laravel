@@ -24,6 +24,13 @@ return new class extends Migration
             $table->string('postal_code')->nullable();
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
+
+            $table->decimal('tax_rate', 5, 2)->default(0);
+            $table->decimal('minimum_order', 8, 2)->default(0);
+            $table->decimal('delivery_radius', 8, 2)->nullable();
+            $table->string('currency')->default('GBP');
+            $table->string('timezone')->default('UTC');
+
             $table->time('opening_time')->nullable();
             $table->time('closing_time')->nullable();
             $table->boolean('is_active')->default(true);

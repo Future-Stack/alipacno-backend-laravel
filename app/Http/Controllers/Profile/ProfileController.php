@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Profile;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
 {
     public function updateProfile(Request $request)
     {
-        $user = $request->user();
+        $user = Auth::user();
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
