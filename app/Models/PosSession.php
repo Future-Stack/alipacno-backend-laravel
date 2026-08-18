@@ -11,7 +11,20 @@ class PosSession extends Model
 
     protected $table = 'pos_sessions';
 
-    protected $fillable = ['branch_id', 'staff_id', 'opening_cash', 'closing_cash', 'total_sales', 'status', 'opened_at', 'closed_at'];
+    protected $fillable = [
+        'branch_id',
+        'staff_id',
+        'opening_balance',
+        'cash_sales',
+        'card_sales',
+        'opening_cash',
+        'closing_cash',
+        'total_sales',
+        'status',
+        'opened_at',
+        'closed_at',
+        'user_id'
+    ];
 
     public function branch()
     {
@@ -20,6 +33,13 @@ class PosSession extends Model
 
     public function staff()
     {
-        return $this->belongsTo(Staff::class);
+        return $this->belongsTo(User::class, 'staff_id');
+        
     }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
 }
