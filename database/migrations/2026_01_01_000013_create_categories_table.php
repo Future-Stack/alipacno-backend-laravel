@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('branch_id')->nullable();
             $table->string('name');
             $table->string('slug');
-            $table->string('icon')->nullable();
+           $table->longText('icon')->nullable();
             $table->string('image')->nullable();
             $table->integer('sort_order')->default(0);
             $table->boolean('is_active')->default(true);
