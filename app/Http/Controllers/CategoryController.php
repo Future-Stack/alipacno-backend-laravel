@@ -18,12 +18,18 @@ class CategoryController extends Controller
 
         // Filter by active status
         if ($request->filled('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
+            $query->where(
+                'is_active',
+                $request->boolean('is_active')
+            );
         }
 
-        // Filter by category/parent category
+        // Filter by parent category
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $query->where(
+                'category_id',
+                $request->category_id
+            );
         }
 
         // Search by category name
@@ -50,15 +56,17 @@ class CategoryController extends Controller
             ]);
         }
 
-        // Paginated categories
+        // Pagination
         $categories = $query->paginate(
             $request->input('per_page', 50)
         );
 
-        // Format image URLs
-        $categories->getCollection()->transform(function ($category) {
-            return $this->formatCategory($category);
-        });
+        // Format response
+        $categories->getCollection()->transform(
+            function ($category) {
+                return $this->formatCategory($category);
+            }
+        );
 
         return response()->json($categories);
     }
@@ -80,13 +88,13 @@ class CategoryController extends Controller
                 'max:255',
             ],
 
+            // Raw SVG string
             'icon' => [
                 'nullable',
-                'image',
-                'mimes:jpg,jpeg,png,webp,svg',
-                'max:2048',
+                'string',
             ],
 
+            // Actual category image
             'image' => [
                 'nullable',
                 'image',
@@ -106,14 +114,9 @@ class CategoryController extends Controller
         ]);
 
         // Generate slug
-        $validated['slug'] = Str::slug($validated['name']);
-
-        // Upload icon
-        if ($request->hasFile('icon')) {
-            $validated['icon'] = $request
-                ->file('icon')
-                ->store('categories/icons', 'public');
-        }
+        $validated['slug'] = Str::slug(
+            $validated['name']
+        );
 
         // Upload category image
         if ($request->hasFile('image')) {
@@ -146,8 +149,10 @@ class CategoryController extends Controller
     /**
      * Update the specified category.
      */
-    public function update(Request $request, Category $category)
-    {
+    public function update(
+        Request $request,
+        Category $category
+    ) {
         $validated = $request->validate([
             'restaurant_id' => [
                 'nullable',
@@ -160,13 +165,13 @@ class CategoryController extends Controller
                 'max:255',
             ],
 
+            // Raw SVG string
             'icon' => [
                 'nullable',
-                'image',
-                'mimes:jpg,jpeg,png,webp,svg',
-                'max:2048',
+                'string',
             ],
 
+            // Actual category image
             'image' => [
                 'nullable',
                 'image',
@@ -187,26 +192,18 @@ class CategoryController extends Controller
 
         // Update slug when name changes
         if (isset($validated['name'])) {
-            $validated['slug'] = Str::slug($validated['name']);
+            $validated['slug'] = Str::slug(
+                $validated['name']
+            );
         }
 
-        // Replace old icon with new icon
-        if ($request->hasFile('icon')) {
-
-            if ($category->icon) {
-                Storage::disk('public')->delete($category->icon);
-            }
-
-            $validated['icon'] = $request
-                ->file('icon')
-                ->store('categories/icons', 'public');
-        }
-
-        // Replace old image with new image
+        // Replace old image
         if ($request->hasFile('image')) {
 
             if ($category->image) {
-                Storage::disk('public')->delete($category->image);
+                Storage::disk('public')->delete(
+                    $category->image
+                );
             }
 
             $validated['image'] = $request
@@ -230,14 +227,11 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category)
     {
-        // Delete icon
-        if ($category->icon) {
-            Storage::disk('public')->delete($category->icon);
-        }
-
-        // Delete image
+        // Delete uploaded image
         if ($category->image) {
-            Storage::disk('public')->delete($category->image);
+            Storage::disk('public')->delete(
+                $category->image
+            );
         }
 
         // Delete category
@@ -249,14 +243,17 @@ class CategoryController extends Controller
     }
 
     /**
-     * Format category with full asset URLs.
+     * Format category response.
+     *
+     * icon = Raw SVG string
+     * image = Full asset URL
      */
     private function formatCategory(Category $category): Category
     {
-        $category->icon_url = $category->icon
-            ? asset('storage/' . $category->icon)
-            : null;
+        // Raw SVG should remain unchanged
+        $category->icon = $category->icon;
 
+        // Image should return full URL
         $category->image_url = $category->image
             ? asset('storage/' . $category->image)
             : null;
