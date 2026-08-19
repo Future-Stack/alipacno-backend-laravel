@@ -140,6 +140,7 @@ Route::prefix('v1')->group(function () {
     // Public Browsing, Branch Selection, Cart & Guest Checkout Routes
     Route::get('restaurants', [RestaurantController::class, 'index']);
     Route::get('restaurants/{restaurant}', [RestaurantController::class, 'show']);
+    Route::get('/branches/overview', [BranchController::class, 'overview']);
     Route::get('branches', [BranchController::class, 'index']);
     Route::get('branches/{branch}', [BranchController::class, 'show']);
     Route::get('categories', [CategoryController::class, 'index']);

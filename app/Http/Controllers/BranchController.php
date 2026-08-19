@@ -128,4 +128,76 @@ class BranchController extends Controller
             'message' => 'Branch Deleted'
         ], 200);
     }
+
+
+
+
+    /**
+ * Branch Overview
+ *
+ * Returns branch statistics and recently added branches.
+ */
+public function overview()
+{
+    // Total branches
+    $totalBranches = Branch::count();
+
+    // Active branches
+    $activeBranches = Branch::where('is_active', true)->count();
+
+    // Total unique cities
+    $totalCities = Branch::whereNotNull('city')
+        ->where('city', '!=', '')
+        ->distinct('city')
+        ->count('city');
+
+    // Average delivery radius
+    $avgDeliveryRadius = Branch::whereNotNull('delivery_radius')
+        ->avg('delivery_radius');
+
+    // Average minimum order
+    $avgMinimumOrder = Branch::whereNotNull('minimum_order')
+        ->avg('minimum_order');
+
+    // Recently added branches
+    $recentBranches = Branch::with('restaurant')
+        ->latest()
+        ->take(5)
+        ->get()
+        ->map(function ($branch) {
+            return [
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'city' => $branch->city,
+                'address' => $branch->address,
+                'is_active' => (bool) $branch->is_active,
+                'created_at' => $branch->created_at,
+            ];
+        });
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Branch overview fetched successfully.',
+        'data' => [
+            'total_branches' => [
+                'value' => $totalBranches,
+                'active' => $activeBranches,
+            ],
+
+            'total_cities' => $totalCities,
+
+            'avg_delivery_radius' => round(
+                (float) ($avgDeliveryRadius ?? 0),
+                2
+            ),
+
+            'avg_minimum_order' => round(
+                (float) ($avgMinimumOrder ?? 0),
+                2
+            ),
+
+            'recent_branches' => $recentBranches,
+        ],
+    ]);
+}
 }
