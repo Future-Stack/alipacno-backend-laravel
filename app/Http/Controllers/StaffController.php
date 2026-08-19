@@ -806,4 +806,73 @@ $deliverySummary = [
         ],
     ]);
 }
+
+//for branch admin
+/**
+ * Staff Management Summary
+ *
+ * Returns:
+ * - Clocked In staff count / total staff
+ * - Total working hours for today
+ */
+public function managementSummary($branch_id)
+{
+    // Get total active staff for this branch
+    $totalStaff = Staff::where('branch_id', $branch_id)
+        ->whereNull('deleted_at')
+        ->count();
+
+    // Today's attendance for this branch
+    $attendanceQuery = StaffAttendance::whereDate(
+        'clock_in',
+        Carbon::today()
+    )->whereHas('staff', function ($query) use ($branch_id) {
+        $query->where('branch_id', $branch_id)
+            ->whereNull('deleted_at');
+    });
+
+    // Currently clocked-in staff
+    $clockedIn = (clone $attendanceQuery)
+        ->whereNull('clock_out')
+        ->count();
+
+    // Completed working hours
+    $completedHours = (clone $attendanceQuery)
+        ->whereNotNull('clock_out')
+        ->sum('total_hours');
+
+    // Currently working staff's elapsed hours
+    $currentHours = 0;
+
+    $openAttendances = (clone $attendanceQuery)
+        ->whereNull('clock_out')
+        ->get();
+
+    foreach ($openAttendances as $attendance) {
+        if ($attendance->clock_in) {
+            $clockIn = Carbon::parse($attendance->clock_in);
+
+            $currentHours += $clockIn->diffInMinutes(now()) / 60;
+        }
+    }
+
+    // Combined total hours
+    $totalHours = $completedHours + $currentHours;
+
+    return response()->json([
+        'message' => 'Staff management summary retrieved successfully.',
+        'data' => [
+            'clocked_in' => [
+                'value' => $clockedIn,
+                'total' => $totalStaff,
+                'display' => "{$clockedIn} / {$totalStaff}",
+            ],
+
+            'total_hours' => [
+                'value' => round($totalHours, 2),
+                'display' => round($totalHours, 2) . 'h',
+            ],
+        ],
+    ]);
+}
 }

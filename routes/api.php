@@ -203,6 +203,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('branch-admins', BranchAdminController::class);
             Route::get('/staff/export', [StaffController::class, 'export']);
             Route::get('/staff/overview', [StaffController::class, 'overview']);
+            Route::get('/staff/management-summary/{branch_id}', [StaffController::class, 'managementSummary']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
             Route::post('staff-attendance/{staff_attendance}/clock-out', [StaffAttendanceController::class, 'clockOut']);
