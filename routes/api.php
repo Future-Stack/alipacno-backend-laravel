@@ -87,6 +87,7 @@ use App\Http\Controllers\Page\PageController;
 
 use App\Http\Controllers\Faq\FaqController;
 use App\Http\Controllers\User\DeleteUsersController;
+use App\Http\Controllers\DriverLocationController;
 
 
 /*
@@ -189,6 +190,10 @@ Route::prefix('v1')->group(function () {
         Route::delete('account-delete', [DeleteUsersController::class, 'destroy']);
         Route::apiResource('faqs', FaqController::class);
          Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
+        Route::post( '/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
+       
+       
+    
 
 
         // Role & Permission Protected Operations
