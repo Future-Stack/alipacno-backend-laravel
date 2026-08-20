@@ -88,6 +88,7 @@ use App\Http\Controllers\Page\PageController;
 use App\Http\Controllers\Faq\FaqController;
 use App\Http\Controllers\User\DeleteUsersController;
 
+
 /*
 |--------------------------------------------------------------------------
 | API Routes - Enterprise Multi-Branch Restaurant Platform
@@ -139,6 +140,7 @@ Route::prefix('v1')->group(function () {
     // Public Browsing, Branch Selection, Cart & Guest Checkout Routes
     Route::get('restaurants', [RestaurantController::class, 'index']);
     Route::get('restaurants/{restaurant}', [RestaurantController::class, 'show']);
+    Route::get('/branches/overview', [BranchController::class, 'overview']);
     Route::get('branches', [BranchController::class, 'index']);
     Route::get('branches/{branch}', [BranchController::class, 'show']);
     Route::get('categories', [CategoryController::class, 'index']);
@@ -200,6 +202,9 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('hq-admins', HqAdminController::class);
             Route::patch('branch-admins/{branch_admin}/toggle-status', [BranchAdminController::class, 'toggleStatus']);
             Route::apiResource('branch-admins', BranchAdminController::class);
+            Route::get('/staff/export', [StaffController::class, 'export']);
+            Route::get('/staff/overview', [StaffController::class, 'overview']);
+            Route::get('/staff/management-summary/{branch_id}', [StaffController::class, 'managementSummary']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
             Route::post('staff-attendance/{staff_attendance}/clock-out', [StaffAttendanceController::class, 'clockOut']);

@@ -6,6 +6,11 @@ use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use App\Exports\StaffExport;
+use Maatwebsite\Excel\Facades\Excel;
+use Carbon\Carbon;
+use App\Models\StaffAttendance;
+use Illuminate\Support\Facades\DB;
 
 class StaffController extends Controller
 {
@@ -377,4 +382,497 @@ class StaffController extends Controller
             ], 422));
         }
     }
+
+
+
+    /**
+ * Export staff members to Excel.
+ */
+public function export(Request $request)
+{
+    return Excel::download(
+        new StaffExport($request),
+        'staff.xlsx'
+    );
+}
+
+
+/**
+ * Staff dashboard overview.
+ */
+public function overview(Request $request)
+{
+    $today = Carbon::today();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Current Period
+    |--------------------------------------------------------------------------
+    */
+
+    $currentStart = $today->copy()->startOfWeek();
+    $currentEnd = $today->copy()->endOfWeek();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Previous Period
+    |--------------------------------------------------------------------------
+    */
+
+    $previousStart = $currentStart->copy()->subWeek();
+    $previousEnd = $currentEnd->copy()->subWeek();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Total Employees
+    |--------------------------------------------------------------------------
+    */
+
+    $totalEmployees = Staff::count();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Total Employees - Previous Period
+    |--------------------------------------------------------------------------
+    |
+    | Employees who had already been hired before previous period ended.
+    |
+    */
+
+    $previousTotalEmployees = Staff::where(
+        'hire_date',
+        '<=',
+        $previousEnd->toDateString()
+    )->count();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Active Today
+    |--------------------------------------------------------------------------
+    */
+
+    $activeToday = Staff::where('status', 'active')
+        ->whereHas('attendances', function ($query) use ($today) {
+            $query->whereDate('clock_in', $today);
+        })
+        ->count();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Active Previous Period
+    |--------------------------------------------------------------------------
+    */
+
+    $previousActive = StaffAttendance::whereBetween(
+        'clock_in',
+        [
+            $previousStart->copy()->startOfDay(),
+            $previousEnd->copy()->endOfDay(),
+        ]
+    )
+        ->whereIn('status', ['present', 'late'])
+        ->distinct('staff_id')
+        ->count('staff_id');
+
+    /*
+    |--------------------------------------------------------------------------
+    | On Shift
+    |--------------------------------------------------------------------------
+    |
+    | Clocked in but not clocked out.
+    |
+    */
+
+    $onShift = StaffAttendance::whereDate(
+        'clock_in',
+        $today
+    )
+        ->whereNull('clock_out')
+        ->whereIn('status', ['present', 'late'])
+        ->distinct('staff_id')
+        ->count('staff_id');
+
+    /*
+    |--------------------------------------------------------------------------
+    | On Shift Previous Period
+    |--------------------------------------------------------------------------
+    */
+
+    $previousOnShift = StaffAttendance::whereBetween(
+        'clock_in',
+        [
+            $previousStart->copy()->startOfDay(),
+            $previousEnd->copy()->endOfDay(),
+        ]
+    )
+        ->whereIn('status', ['present', 'late'])
+        ->distinct('staff_id')
+        ->count('staff_id');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Absent Employees Today
+    |--------------------------------------------------------------------------
+    */
+
+    $absentEmployees = Staff::where('status', 'absent')
+        ->count();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Previous Period Absent
+    |--------------------------------------------------------------------------
+    */
+
+    $previousAbsentEmployees = StaffAttendance::whereBetween(
+        'created_at',
+        [
+            $previousStart->copy()->startOfDay(),
+            $previousEnd->copy()->endOfDay(),
+        ]
+    )
+        ->where('status', 'absent')
+        ->distinct('staff_id')
+        ->count('staff_id');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hours Worked Per Department - This Week
+    |--------------------------------------------------------------------------
+    */
+
+    $hoursPerDepartment = StaffAttendance::query()
+        ->select(
+            'roles.name as department',
+            DB::raw('COALESCE(SUM(staff_attendance.total_hours), 0) as total_hours')
+        )
+        ->join('staff', 'staff.id', '=', 'staff_attendance.staff_id')
+        ->leftJoin('roles', 'roles.id', '=', 'staff.role_id')
+        ->whereBetween(
+            'staff_attendance.clock_in',
+            [
+                $currentStart->copy()->startOfDay(),
+                $currentEnd->copy()->endOfDay(),
+            ]
+        )
+        ->groupBy('roles.id', 'roles.name')
+        ->orderByDesc('total_hours')
+        ->get()
+        ->map(function ($item) {
+            return [
+                'department' => $item->department ?? 'Unassigned',
+                'hours' => round((float) $item->total_hours, 2),
+            ];
+        })
+        ->values();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Weekly Attendance Trend
+    |--------------------------------------------------------------------------
+    */
+
+    $weeklyAttendance = collect();
+
+    for ($date = $currentStart->copy(); $date->lte($currentEnd); $date->addDay()) {
+
+        $totalEmployeesForDay = Staff::where(
+            'hire_date',
+            '<=',
+            $date->toDateString()
+        )->count();
+
+        $presentEmployees = StaffAttendance::whereDate(
+            'clock_in',
+            $date
+        )
+            ->whereIn('status', ['present', 'late'])
+            ->distinct('staff_id')
+            ->count('staff_id');
+
+        $percentage = $totalEmployeesForDay > 0
+            ? round(($presentEmployees / $totalEmployeesForDay) * 100, 2)
+            : 0;
+
+        $weeklyAttendance->push([
+            'date' => $date->toDateString(),
+            'day' => $date->format('D'),
+            'attendance_percentage' => $percentage,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recent Staff Activity
+    |--------------------------------------------------------------------------
+    */
+
+    $recentActivities = StaffAttendance::with([
+        'staff.branch',
+        'staff.role',
+    ])
+        ->latest('updated_at')
+        ->limit(10)
+        ->get()
+        ->map(function ($attendance) {
+
+            if (!$attendance->clock_out) {
+                $activity = 'clocked in';
+                $time = $attendance->clock_in;
+            } else {
+                $activity = 'completed shift';
+                $time = $attendance->clock_out;
+            }
+
+            return [
+                'time' => $time?->format('h:i A'),
+
+                'date' => $time?->format('Y-m-d'),
+
+                'staff_name' => $attendance->staff?->name,
+
+                'activity' => $activity,
+
+                'branch' => $attendance->staff?->branch?->name,
+
+                'role' => $attendance->staff?->role?->name,
+
+                'status' => $attendance->status,
+            ];
+        });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Percentage Helper
+    |--------------------------------------------------------------------------
+    */
+
+    $percentageChange = function ($current, $previous) {
+
+        if ((float) $previous === 0.0) {
+            return $current > 0 ? 100 : 0;
+        }
+
+        return round(
+            (($current - $previous) / $previous) * 100,
+            1
+        );
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | Workforce & Delivery Summary
+    |--------------------------------------------------------------------------
+    |
+    | These values require delivery/order tables.
+    | Do NOT generate fake values.
+    |
+    */
+
+    /*
+|--------------------------------------------------------------------------
+| Available Riders
+|--------------------------------------------------------------------------
+*/
+
+/*
+|--------------------------------------------------------------------------
+| Available Riders
+|--------------------------------------------------------------------------
+*/
+
+$availableRiders = Staff::whereHas('role', function ($query) {
+    $query->where('name', 'Delivery Driver');
+})
+    ->where('status', 'active')
+    ->count();
+
+$previousAvailableRiders = Staff::whereHas('role', function ($query) {
+    $query->where('name', 'Delivery Driver');
+})
+    ->where('status', 'active')
+    ->where('hire_date', '<=', $previousEnd->toDateString())
+    ->count();
+
+$availableRidersChange = $percentageChange(
+    $availableRiders,
+    $previousAvailableRiders
+);
+/*
+|--------------------------------------------------------------------------
+| Workforce & Delivery Summary
+|--------------------------------------------------------------------------
+*/
+
+$deliverySummary = [
+    'total_deliveries' => 0,
+    'total_deliveries_change' => 0,
+
+    'avg_earnings_per_driver' => 0,
+    'avg_earnings_change' => 0,
+
+    'avg_delivery_time_minutes' => 0,
+    'avg_delivery_time_change' => 0,
+
+    'top_rated_driver' => null,
+
+    'delayed_orders' => 0,
+    'delayed_orders_change' => 0,
+
+    'available_riders' => $availableRiders,
+    'available_riders_change' => $availableRidersChange,
+];
+    /*
+    |--------------------------------------------------------------------------
+    | Final Response
+    |--------------------------------------------------------------------------
+    */
+
+    return response()->json([
+        'data' => [
+
+            /*
+            |--------------------------------------------------------------------------
+            | Summary Cards
+            |--------------------------------------------------------------------------
+            */
+
+            'summary' => [
+
+                'total_employees' => [
+                    'value' => $totalEmployees,
+                    'change_percentage' => $percentageChange(
+                        $totalEmployees,
+                        $previousTotalEmployees
+                    ),
+                ],
+
+                'active_today' => [
+                    'value' => $activeToday,
+                    'change_percentage' => $percentageChange(
+                        $activeToday,
+                        $previousActive
+                    ),
+                ],
+
+                'on_shift' => [
+                    'value' => $onShift,
+                    'change_percentage' => $percentageChange(
+                        $onShift,
+                        $previousOnShift
+                    ),
+                ],
+
+                'absent_employees' => [
+                    'value' => $absentEmployees,
+                    'change_percentage' => $percentageChange(
+                        $absentEmployees,
+                        $previousAbsentEmployees
+                    ),
+                ],
+            ],
+
+            /*
+            |--------------------------------------------------------------------------
+            | Hours Worked
+            |--------------------------------------------------------------------------
+            */
+
+            'hours_worked_per_department' => $hoursPerDepartment,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Weekly Attendance
+            |--------------------------------------------------------------------------
+            */
+
+            'weekly_attendance_trend' => $weeklyAttendance,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Recent Activity
+            |--------------------------------------------------------------------------
+            */
+
+            'recent_staff_activity' => $recentActivities,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Workforce & Delivery
+            |--------------------------------------------------------------------------
+            */
+
+            'workforce_delivery_summary' => $deliverySummary,
+        ],
+    ]);
+}
+
+//for branch admin
+/**
+ * Staff Management Summary
+ *
+ * Returns:
+ * - Clocked In staff count / total staff
+ * - Total working hours for today
+ */
+public function managementSummary($branch_id)
+{
+    // Get total active staff for this branch
+    $totalStaff = Staff::where('branch_id', $branch_id)
+        ->whereNull('deleted_at')
+        ->count();
+
+    // Today's attendance for this branch
+    $attendanceQuery = StaffAttendance::whereDate(
+        'clock_in',
+        Carbon::today()
+    )->whereHas('staff', function ($query) use ($branch_id) {
+        $query->where('branch_id', $branch_id)
+            ->whereNull('deleted_at');
+    });
+
+    // Currently clocked-in staff
+    $clockedIn = (clone $attendanceQuery)
+        ->whereNull('clock_out')
+        ->count();
+
+    // Completed working hours
+    $completedHours = (clone $attendanceQuery)
+        ->whereNotNull('clock_out')
+        ->sum('total_hours');
+
+    // Currently working staff's elapsed hours
+    $currentHours = 0;
+
+    $openAttendances = (clone $attendanceQuery)
+        ->whereNull('clock_out')
+        ->get();
+
+    foreach ($openAttendances as $attendance) {
+        if ($attendance->clock_in) {
+            $clockIn = Carbon::parse($attendance->clock_in);
+
+            $currentHours += $clockIn->diffInMinutes(now()) / 60;
+        }
+    }
+
+    // Combined total hours
+    $totalHours = $completedHours + $currentHours;
+
+    return response()->json([
+        'message' => 'Staff management summary retrieved successfully.',
+        'data' => [
+            'clocked_in' => [
+                'value' => $clockedIn,
+                'total' => $totalStaff,
+                'display' => "{$clockedIn} / {$totalStaff}",
+            ],
+
+            'total_hours' => [
+                'value' => round($totalHours, 2),
+                'display' => round($totalHours, 2) . 'h',
+            ],
+        ],
+    ]);
+}
 }
