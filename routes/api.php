@@ -336,5 +336,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/order/success', [StripeController::class, 'OrderSuccess']);
     Route::get('/order/cancel', [StripeController::class, 'OrderCancel']);
 
+    Route::post('/order/webhook-handle', [StripeController::class, 'handleWebhook']);
+
 });
 
