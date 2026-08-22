@@ -14,7 +14,7 @@ class MenuItemController extends Controller
      */
     public function index(Request $request)
     {
-        $query = MenuItem::with(['category', 'sizes', 'cookingPreferences', 'spiceLevels', 'toppings']);
+        $query = MenuItem::with(['category', 'sizes', 'cookingPreferences', 'spiceLevels', 'toppings', 'recipes.ingredients.inventoryItem']);
 
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
@@ -155,7 +155,7 @@ class MenuItemController extends Controller
      */
     public function show(MenuItem $menuItem)
     {
-        return response()->json($menuItem->load(['category', 'sizes', 'cookingPreferences', 'spiceLevels', 'toppings', 'reviews']));
+        return response()->json($menuItem->load(['category', 'sizes', 'cookingPreferences', 'spiceLevels', 'toppings', 'reviews', 'recipes.ingredients.inventoryItem']));
     }
 
     /**

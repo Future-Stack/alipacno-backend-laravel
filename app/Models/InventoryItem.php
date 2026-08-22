@@ -11,7 +11,24 @@ class InventoryItem extends Model
 
     protected $table = 'inventory_items';
 
-    protected $fillable = ['branch_id', 'category_id', 'name', 'sku', 'quantity', 'minimum_stock', 'unit', 'purchase_price', 'selling_price', 'status'];
+    protected $fillable = [
+        'branch_id', 'category_id', 'type', 'name', 'sku', 'quantity', 'minimum_stock',
+        'unit', 'image', 'description', 'purchase_price', 'selling_price', 'status',
+        'made_from_item_id', 'pack_size', 'pack_unit', 'yield_qty', 'yield_unit',
+    ];
+
+    protected $appends = ['image_url'];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (!$this->image) {
+            return null;
+        }
+
+        return str_starts_with($this->image, 'http') || str_starts_with($this->image, '/')
+            ? $this->image
+            : asset('storage/' . $this->image);
+    }
 
     public function branch()
     {
@@ -26,5 +43,29 @@ class InventoryItem extends Model
     public function transactions()
     {
         return $this->hasMany(InventoryTransaction::class);
+    }
+
+    public function madeFromItem()
+    {
+        return $this->belongsTo(InventoryItem::class, 'made_from_item_id');
+    }
+
+    public function preparedItems()
+    {
+        return $this->hasMany(InventoryItem::class, 'made_from_item_id');
+    }
+
+    /**
+     * Compute the produced quantity and unit for converting a number of packs
+     * of this item's raw material into this (prepared) item, using its stored ratio.
+     */
+    public function conversionYieldFor(float $packs): array
+    {
+        return [
+            'raw_consumed' => (float) $this->pack_size * $packs,
+            'raw_unit' => $this->pack_unit,
+            'yield_produced' => (float) $this->yield_qty * $packs,
+            'yield_unit' => $this->yield_unit,
+        ];
     }
 }

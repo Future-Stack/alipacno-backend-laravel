@@ -275,10 +275,15 @@ Route::prefix('v1')->group(function () {
         // Inventory Management
         Route::middleware('role:super_admin,hq_admin,branch_admin,inventory_manager')->group(function () {
             Route::apiResource('inventory-categories', InventoryCategoryController::class);
+            Route::get('inventory-items/summary', [InventoryItemController::class, 'summary']);
+            Route::get('inventory-items/analytics', [InventoryItemController::class, 'analytics']);
+            Route::get('inventory-items/export', [InventoryItemController::class, 'export']);
+            Route::post('inventory-items/{inventoryItem}/distribute', [InventoryItemController::class, 'distribute']);
             Route::apiResource('inventory-items', InventoryItemController::class);
             Route::apiResource('inventory-transactions', InventoryTransactionController::class);
             Route::apiResource('suppliers', SupplierController::class);
             Route::post('stock-conversions/calculate', [StockConversionController::class, 'calculate']);
+            Route::post('stock-conversions/convert', [StockConversionController::class, 'convert']);
             Route::apiResource('stock-conversions', StockConversionController::class);
         });
 
