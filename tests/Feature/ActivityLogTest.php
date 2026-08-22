@@ -35,7 +35,7 @@ class ActivityLogTest extends TestCase
         $this->branch = Branch::create([
             'restaurant_id' => $restaurant->id,
             'name' => 'Main Headquarters Branch',
-            'code' => 'HQ001',
+            'branch_code' => 'HQ001',
             'is_active' => true,
         ]);
     }
