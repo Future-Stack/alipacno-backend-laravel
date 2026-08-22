@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class User extends Authenticatable
@@ -159,4 +160,9 @@ class User extends Authenticatable
     {
         return $this->user_type === 'customer';
     }
+
+    public function driver(): HasOne
+{
+    return $this->hasOne(Driver::class);
+}
 }

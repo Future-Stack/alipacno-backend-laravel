@@ -253,7 +253,7 @@ class OrderController extends Controller
             KitchenOrder::create([
                 'order_id' => $order->id,
                 'kitchen_station_id' => $station?->id,
-                'status' => 'new',
+                'status' => 'pending',
             ]);
 
             // Clear Cart if order was created from cart
@@ -389,4 +389,6 @@ class OrderController extends Controller
 
         return response()->json(['message' => 'Order cancelled successfully']);
     }
+
+
 }
