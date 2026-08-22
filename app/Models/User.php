@@ -133,6 +133,11 @@ class User extends Authenticatable
         return $userTypeMatch || $roleNameMatch || $this->user_type === 'super_admin';
     }
 
+    public function hasAnyRole($roles): bool
+    {
+        return $this->hasRole($roles);
+    }
+
     public function hasPermission(string $permission): bool
     {
         if ($this->user_type === 'super_admin' || $this->user_type === 'admin') {
