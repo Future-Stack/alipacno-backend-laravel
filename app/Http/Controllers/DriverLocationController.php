@@ -94,19 +94,22 @@ class DriverLocationController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $location = DriverLocation::create([
-            'driver_id' => $driver->id,
-            'delivery_id' => $delivery->id,
+        $location = DriverLocation::updateOrCreate(
+            [
+                'driver_id' => $driver->id,
+                'delivery_id' => $delivery->id,
+            ],
+            [
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
 
-            'latitude' => $validated['latitude'],
-            'longitude' => $validated['longitude'],
+                'accuracy' => $validated['accuracy'] ?? null,
+                'speed' => $validated['speed'] ?? null,
+                'heading' => $validated['heading'] ?? null,
 
-            'accuracy' => $validated['accuracy'] ?? null,
-            'speed' => $validated['speed'] ?? null,
-            'heading' => $validated['heading'] ?? null,
-
-            'tracked_at' => $validated['tracked_at'] ?? now(),
-        ]);
+                'tracked_at' => $validated['tracked_at'] ?? now(),
+            ]
+        );
 
         /*
         |--------------------------------------------------------------------------

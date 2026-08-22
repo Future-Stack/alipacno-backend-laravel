@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reverb WebSocket Test</title>
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;}
+        button { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;}
+        button:hover { background: #45a049; }
+        #logs { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 4px; height: 300px; overflow-y: scroll; margin-top: 20px; font-family: monospace;}
+        .log-item { border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2 style="text-align: center;">Live Tracking Test (Reverb)</h2>
+    
+    <label>Bearer Token (From Postman):</label>
+    <input type="text" id="token" placeholder="Enter your Bearer Token here (e.g. 1|abcdef...)">
+    
+    <label>Delivery ID (To track):</label>
+    <input type="text" id="deliveryId" placeholder="e.g. 2" value="2">
+    
+    <button onclick="connectWebSocket()">Connect & Listen</button>
+
+    <div id="logs">
+        <div style="color: #888;">Waiting for connection...</div>
+    </div>
+</div>
+
+<script>
+    function logMessage(msg, color = "#00ff00") {
+        const logsDiv = document.getElementById('logs');
+        const time = new Date().toLocaleTimeString();
+        logsDiv.innerHTML += `<div class="log-item"><span style="color: #888;">[${time}]</span> <span style="color: ${color};">${msg}</span></div>`;
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+    }
+
+    function connectWebSocket() {
+        const token = document.getElementById('token').value;
+        const deliveryId = document.getElementById('deliveryId').value;
+
+        if (!token) {
+            alert("Please enter a valid Bearer Token!");
+            return;
+        }
+
+        logMessage("Connecting to Reverb Server...", "#ffaa00");
+
+        window.Pusher = Pusher;
+        window.Echo = new Echo({
+            broadcaster: 'reverb',
+            key: 'evy165iiwizdsoz0va1i', // Your REVERB_APP_KEY
+            wsHost: '127.0.0.1',
+            wsPort: 8080,
+            wssPort: 8080,
+            forceTLS: false,
+            enabledTransports: ['ws', 'wss'],
+            authEndpoint: '/api/v1/broadcasting/auth', // Important for custom API auth
+            auth: {
+                headers: {
+                    Authorization: 'Bearer ' + token,
+                    Accept: 'application/json'
+                }
+            }
+        });
+
+        // Listen for connection status
+        window.Echo.connector.pusher.connection.bind('connected', () => {
+            logMessage("Successfully connected to Reverb WebSocket!", "#00ffff");
+        });
+
+        window.Echo.connector.pusher.connection.bind('error', (err) => {
+            logMessage("Connection Error: " + JSON.stringify(err), "#ff0000");
+        });
+
+        // Subscribe to private channel
+        logMessage(`Subscribing to private channel: delivery.${deliveryId}...`, "#ffaa00");
+        
+        window.Echo.private(`delivery.${deliveryId}`)
+            .listen('.location.updated', (event) => {
+                logMessage(`📍 NEW LOCATION RECEIVED!`);
+                logMessage(`Latitude: ${event.latitude}`);
+                logMessage(`Longitude: ${event.longitude}`);
+                logMessage(`Speed: ${event.speed || 'N/A'}`);
+                logMessage(`---------------------------`);
+                console.log(event);
+            });
+    }
+</script>
+
+</body>
+</html>
