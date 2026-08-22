@@ -12,7 +12,21 @@ class Driver extends Model
 
     protected $table = 'drivers';
 
-    protected $fillable = ['user_id', 'branch_id', 'name', 'phone', 'vehicle_type', 'license_number', 'status'];
+    protected $fillable = [
+        'user_id',
+        'branch_id',
+        'name',
+        'phone',
+        'vehicle_type',
+        'license_number',
+        'kyc_status',
+        'is_online',
+        'status'
+    ];
+
+    protected $casts = [
+        'is_online' => 'boolean',
+    ];
 
     public function user()
     {

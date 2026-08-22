@@ -129,8 +129,10 @@ class User extends Authenticatable
 
         $userTypeMatch = in_array($this->user_type, $roles);
         $roleNameMatch = $this->role && in_array($this->role->name, $roles);
+        $driverMatch = in_array('driver', $roles) && ($this->relationLoaded('driver') ? (bool) $this->driver : $this->driver()->exists());
+        $adminMatch = $this->user_type === 'super_admin' || $this->user_type === 'admin';
 
-        return $userTypeMatch || $roleNameMatch || $this->user_type === 'super_admin';
+        return $userTypeMatch || $roleNameMatch || $driverMatch || $adminMatch;
     }
 
     public function hasAnyRole($roles): bool
