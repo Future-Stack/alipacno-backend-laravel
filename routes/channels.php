@@ -12,9 +12,10 @@ Broadcast::channel('delivery.{deliveryId}', function ($user, $deliveryId) {
     }
 
     // Admin can view any delivery
-    if ($user->hasRole('admin')) {
-        return true;
-    }
+    if ($user->hasAnyRole(['super_admin', 'hq_admin', 'branch_admin'])) {
+    return true;
+}
+
 
     // Customer can view only their own order delivery
     if (
