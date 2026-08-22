@@ -88,6 +88,8 @@ use App\Http\Controllers\Page\PageController;
 use App\Http\Controllers\Faq\FaqController;
 use App\Http\Controllers\User\DeleteUsersController;
 use App\Http\Controllers\DriverLocationController;
+use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Http\Request;
 
 
 /*
@@ -104,6 +106,11 @@ Route::prefix('v1')->group(function () {
             'message' => 'OK'
         ]);
     });
+
+    // Broadcasting Auth (for WebSocket private channels)
+    Route::post('/broadcasting/auth', function (Request $request) {
+        return Broadcast::auth($request);
+    })->middleware('auth:sanctum');
 
       // Public Pages
         Route::get('pages', [PageController::class, 'index']);
