@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\SendOtpMail;
+use App\Models\Driver;
 use App\Models\Otp;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -26,28 +27,72 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
             'avatar' => 'nullable',
             'user_image' => 'nullable',
-            'user_type' => 'nullable|string|in:customer,admin,staff,super_admin,hq_admin,branch_admin',
+            'user_type' => 'nullable|string|in:customer,driver,admin,staff,super_admin,hq_admin,branch_admin',
             'role_id' => 'nullable|exists:roles,id',
+            'branch_id' => 'nullable|exists:branches,id',
+            'vehicle_type' => 'nullable|string|max:100',
+            'license_number' => 'nullable|string|max:100',
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
-        $validated['user_type'] = $validated['user_type'] ?? 'customer';
-        $validated['status'] = 'active';
-        $validated['email_verified_at'] = null; // Unverified until OTP confirmation
+        $userPayload = [
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'] ?? null,
+            'password' => Hash::make($validated['password']),
+            'user_type' => $validated['user_type'] ?? 'customer',
+            'role_id' => $validated['role_id'] ?? null,
+            'status' => 'active',
+            'email_verified_at' => null,
+        ];
 
         // Handle avatar image file upload if present
         if ($request->hasFile('avatar')) {
             $request->validate(['avatar' => 'image|mimes:jpeg,png,jpg,webp,gif|max:10240']);
-            $validated['avatar'] = $request->file('avatar')->store('users/avatars', 'public');
+            $userPayload['avatar'] = $request->file('avatar')->store('users/avatars', 'public');
         }
 
         // Handle user_image file upload if present
         if ($request->hasFile('user_image')) {
             $request->validate(['user_image' => 'image|mimes:jpeg,png,jpg,webp,gif|max:10240']);
-            $validated['user_image'] = $request->file('user_image')->store('users/images', 'public');
+            $userPayload['user_image'] = $request->file('user_image')->store('users/images', 'public');
         }
 
-        $user = User::create($validated);
+        $user = User::create($userPayload);
+
+        // Check if user is registering as a driver (via user_type == 'driver' or role_id == 7 / 'Delivery Driver' role)
+        $isDriverRole = false;
+        if ($user->role_id) {
+            $role = \App\Models\Role::find($user->role_id);
+            if ($role && (strtolower($role->name) === 'delivery driver' || $role->id == 7)) {
+                $isDriverRole = true;
+            }
+        }
+
+        if ($user->user_type === 'driver' || $user->role_id == 7 || $isDriverRole) {
+            $user->user_type = 'driver';
+            $user->save();
+
+            $licenseImagePath = null;
+            if ($request->hasFile('license_image')) {
+                $request->validate(['license_image' => 'file|mimes:jpeg,png,jpg,webp,pdf|max:10240']);
+                $licenseImagePath = $request->file('license_image')->store('drivers/licenses', 'public');
+            }
+
+            Driver::create([
+                'user_id' => $user->id,
+                'branch_id' => $request->input('branch_id', 1),
+                'name' => $user->name,
+                'phone' => $user->phone ?? 'N/A',
+                'vehicle_type' => $request->input('vehicle_type', 'Motorcycle'),
+                'license_number' => $request->input('license_number'),
+                'license_image' => $licenseImagePath,
+                'kyc_status' => 'pending',
+                'is_online' => false,
+                'status' => 'available',
+            ]);
+        }
+
+        $user->load(['driver', 'role']);
 
         // Generate 5-digit OTP code
         $otpCode = sprintf('%05d', mt_rand(0, 99999));
@@ -73,6 +118,9 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Registration successful! A 5-digit verification code has been sent to your email.',
             'user' => $user,
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
             'otp_sent' => true,
         ], 201);
     }
@@ -128,7 +176,7 @@ class AuthController extends Controller
         $user->email_verified_at = now();
         $user->save();
 
-        $user->load('role.permissions');
+        $user->load(['driver.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -136,6 +184,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -371,6 +422,7 @@ class AuthController extends Controller
         // Revoke previous tokens
         $user->tokens()->delete();
 
+        $user->load(['driver.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -378,6 +430,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -469,7 +524,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        //$user->load('role.permissions');
+        $user->load(['driver.branch', 'role.permissions']);
 
         // Revoke previous tokens optionally
         $user->tokens()->delete();
@@ -481,6 +536,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -489,10 +547,13 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = Auth::user()->load(['addresses']);
+        $user = Auth::user()->load(['addresses', 'driver.branch', 'role.permissions']);
 
         return response()->json([
             'user' => $user,
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
             'permissions' => $user->role ? $user->role->permissions->pluck('name') : [],
             'is_super_admin' => $user->isSuperAdmin(),
             'is_branch_admin' => $user->isBranchAdmin(),
