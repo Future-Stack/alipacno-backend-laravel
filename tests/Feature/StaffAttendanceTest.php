@@ -42,6 +42,7 @@ class StaffAttendanceTest extends TestCase
         ]);
 
         $this->staffMember = Staff::create([
+            'employee_id' => 'EMP-001',
             'branch_id' => $branch->id,
             'name' => 'John Doe',
             'email' => 'john.doe@example.com',

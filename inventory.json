@@ -1,0 +1,1847 @@
+{
+    "info": {
+        "_postman_id": "alipacino-inventory-collection",
+        "name": "Alipacino Inventory API",
+        "description": "All inventory-related endpoints (categories, items, transactions, suppliers, stock conversions, recipes) for the Alipacino Laravel backend.\n\nAuth: Sanctum Bearer token. Login first via your main Auth collection, then set the `token` collection variable to the returned access token.\n\nRoles allowed: super_admin, hq_admin, branch_admin, inventory_manager (categories/items/transactions/suppliers/stock-conversions); recipes additionally allow super_admin, hq_admin, branch_admin.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "branch_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "inventory_category_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "inventory_item_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "prepared_item_id",
+            "value": "2",
+            "type": "string"
+        },
+        {
+            "key": "inventory_transaction_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "supplier_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "stock_conversion_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "recipe_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "ingredient_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "menu_item_id",
+            "value": "1",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Inventory Categories",
+            "item": [
+                {
+                    "name": "List Inventory Categories (GET /api/v1/inventory-categories)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-categories?branch_id={{branch_id}}&status=active&search=Meat&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-categories"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "active",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "Meat",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "List inventory categories.\nMiddleware: auth:sanctum, role:super_admin,hq_admin,branch_admin,inventory_manager"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Inventory Category (POST /api/v1/inventory-categories)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-categories",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-categories"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_id\": 1,\n    \"name\": \"Raw Meat\",\n    \"description\": \"Fresh and frozen raw meat items\",\n    \"status\": \"active\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Inventory Category (GET /api/v1/inventory-categories/{{inventory_category_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-categories",
+                                "{{inventory_category_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Inventory Category (PUT /api/v1/inventory-categories/{{inventory_category_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-categories",
+                                "{{inventory_category_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Raw Meat & Poultry\",\n    \"description\": \"Updated description\",\n    \"status\": \"active\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Inventory Category (DELETE /api/v1/inventory-categories/{{inventory_category_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-categories",
+                                "{{inventory_category_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Inventory Items",
+            "item": [
+                {
+                    "name": "List Inventory Items (GET /api/v1/inventory-items)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items?branch_id={{branch_id}}&category_id={{inventory_category_id}}&type=raw_material&status=low_stock&low_stock_only=true&search=Beef&sort_by=created_at&sort_direction=desc&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "{{inventory_category_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "raw_material",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "low_stock",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "low_stock_only",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "Beef",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_by",
+                                    "value": "created_at",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_direction",
+                                    "value": "desc",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Filters: branch_id, category_id, type (raw_material|prepared), status, low_stock_only, search, sort_by, sort_direction, all, per_page"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Raw Material Item (JSON) (POST /api/v1/inventory-items)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items"
+                            ]
+                        },
+                        "description": "Create a raw-material inventory item without an image (JSON body).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_id\": 1,\n    \"category_id\": 1,\n    \"type\": \"raw_material\",\n    \"name\": \"Minced Beef\",\n    \"sku\": \"RM-BEEF-001\",\n    \"quantity\": 100,\n    \"minimum_stock\": 10,\n    \"unit\": \"kg\",\n    \"description\": \"Fresh minced beef, 80/20 blend\",\n    \"purchase_price\": 4.5,\n    \"selling_price\": null\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Item with Image (form-data) (POST /api/v1/inventory-items)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items"
+                            ]
+                        },
+                        "description": "Same as Create, but using multipart/form-data to also attach an item image via the 'image' file field.",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "1",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "1",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "prepared",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "name",
+                                    "value": "Burger Patties",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "sku",
+                                    "value": "PR-PATTY-001",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "0",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "minimum_stock",
+                                    "value": "20",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "unit",
+                                    "value": "pcs",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "description",
+                                    "value": "4oz beef patties made from minced beef",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "purchase_price",
+                                    "value": "1.2",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "selling_price",
+                                    "value": "2.5",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "made_from_item_id",
+                                    "value": "{{inventory_item_id}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "pack_size",
+                                    "value": "7",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "pack_unit",
+                                    "value": "kg",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "yield_qty",
+                                    "value": "50",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "yield_unit",
+                                    "value": "pcs",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "image",
+                                    "type": "file",
+                                    "src": []
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Inventory Item (GET /api/v1/inventory-items/{{inventory_item_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "{{inventory_item_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Inventory Item (PUT /api/v1/inventory-items/{{inventory_item_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "{{inventory_item_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"quantity\": 85,\n    \"minimum_stock\": 10,\n    \"purchase_price\": 4.75\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Inventory Item (DELETE /api/v1/inventory-items/{{inventory_item_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "{{inventory_item_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Dashboard Summary (GET /api/v1/inventory-items/summary)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/summary?branch_id={{branch_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "summary"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Stat cards: total_items, low_stock_items, out_of_stock_items, total_stock_value (with 7-day change percent)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Stock Alert / KPI Analytics (GET /api/v1/inventory-items/analytics)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/analytics?branch_id={{branch_id}}&period=week",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "analytics"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "period",
+                                    "value": "week",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "KPI overview: stock_value, inventory_turnover, low_stock_alerts, out_of_stock, avg_daily_consumption, top_selling_product, damaged_wasted_items, sales_from_stock."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Export Inventory Items (CSV) (GET /api/v1/inventory-items/export)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/export?branch_id={{branch_id}}&category_id={{inventory_category_id}}&type=raw_material&status=low_stock&search=Beef",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "export"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "{{inventory_category_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "raw_material",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "low_stock",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "Beef",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Streams a CSV file. Same filters as List Inventory Items."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Distribute Item To Branch (POST /api/v1/inventory-items/{{inventory_item_id}}/distribute)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}/distribute",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-items",
+                                "{{inventory_item_id}}",
+                                "distribute"
+                            ]
+                        },
+                        "description": "Moves quantity from this item's branch to another branch, creating the item there if needed.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_id\": 2,\n    \"quantity\": 20\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Inventory Transactions",
+            "item": [
+                {
+                    "name": "List Inventory Transactions (GET /api/v1/inventory-transactions)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions?inventory_item_id={{inventory_item_id}}&transaction_type=purchase&branch_id={{branch_id}}&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "inventory_item_id",
+                                    "value": "{{inventory_item_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "transaction_type",
+                                    "value": "purchase",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Transaction - Purchase (POST /api/v1/inventory-transactions)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions"
+                            ]
+                        },
+                        "description": "transaction_type: purchase, sale, waste, adjustment, restock. Automatically adjusts item quantity & status.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inventory_item_id\": 1,\n    \"transaction_type\": \"purchase\",\n    \"quantity\": 25,\n    \"notes\": \"Weekly stock delivery from supplier\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Transaction - Sale (POST /api/v1/inventory-transactions)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inventory_item_id\": 1,\n    \"transaction_type\": \"sale\",\n    \"quantity\": 5,\n    \"notes\": \"Consumed via order #1042\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Inventory Transaction (GET /api/v1/inventory-transactions/{{inventory_transaction_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions",
+                                "{{inventory_transaction_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Inventory Transaction Notes (PUT /api/v1/inventory-transactions/{{inventory_transaction_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions",
+                                "{{inventory_transaction_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"notes\": \"Corrected note text\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Inventory Transaction (DELETE /api/v1/inventory-transactions/{{inventory_transaction_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "inventory-transactions",
+                                "{{inventory_transaction_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Suppliers",
+            "item": [
+                {
+                    "name": "List Suppliers (GET /api/v1/suppliers)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/suppliers?branch_id={{branch_id}}&search=Fresh Farms&sort_by=name&sort_direction=asc&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "suppliers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "Fresh Farms",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_by",
+                                    "value": "name",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_direction",
+                                    "value": "asc",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Supplier (POST /api/v1/suppliers)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/suppliers",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "suppliers"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_id\": 1,\n    \"name\": \"Fresh Farms Ltd\",\n    \"phone\": \"+44 20 7946 0958\",\n    \"email\": \"orders@freshfarms.example.com\",\n    \"address\": \"12 Market Street, London\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Supplier (GET /api/v1/suppliers/{{supplier_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Supplier (PUT /api/v1/suppliers/{{supplier_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone\": \"+44 20 7946 1111\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Supplier (DELETE /api/v1/suppliers/{{supplier_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Stock Conversions",
+            "item": [
+                {
+                    "name": "List Stock Conversions (GET /api/v1/stock-conversions)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions?branch_id={{branch_id}}&inventory_item_id={{inventory_item_id}}&converted_item_id={{prepared_item_id}}&sort_by=created_at&sort_direction=desc&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "inventory_item_id",
+                                    "value": "{{inventory_item_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "converted_item_id",
+                                    "value": "{{prepared_item_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_by",
+                                    "value": "created_at",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_direction",
+                                    "value": "desc",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Stock Conversion (manual quantity) (POST /api/v1/stock-conversions)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions"
+                            ]
+                        },
+                        "description": "Deducts `quantity` from inventory_item_id and adds the same quantity to converted_item_id.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_id\": 1,\n    \"inventory_item_id\": \"{{inventory_item_id}}\",\n    \"converted_item_id\": \"{{prepared_item_id}}\",\n    \"quantity\": 7\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Stock Conversion (GET /api/v1/stock-conversions/{{stock_conversion_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions",
+                                "{{stock_conversion_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Stock Conversion (PUT /api/v1/stock-conversions/{{stock_conversion_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions",
+                                "{{stock_conversion_id}}"
+                            ]
+                        },
+                        "description": "Reverses the old stock impact and re-applies the new values.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"quantity\": 10\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Stock Conversion (DELETE /api/v1/stock-conversions/{{stock_conversion_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions",
+                                "{{stock_conversion_id}}"
+                            ]
+                        },
+                        "description": "Also reverses this conversion's stock impact."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Calculate Conversion Estimate (POST /api/v1/stock-conversions/calculate)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions/calculate",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions",
+                                "calculate"
+                            ]
+                        },
+                        "description": "Preview only, doesn't move stock. Uses the target item's stored pack_size/yield_qty ratio when configured, else 1:1.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inventory_item_id\": \"{{inventory_item_id}}\",\n    \"converted_item_id\": \"{{prepared_item_id}}\",\n    \"quantity\": 14\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Convert Packs (uses item ratio) (POST /api/v1/stock-conversions/convert)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/stock-conversions/convert",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "stock-conversions",
+                                "convert"
+                            ]
+                        },
+                        "description": "Converts N packs of a prepared item's raw material using the prepared item's own made_from_item_id/pack_size/yield_qty ratio. Creates a stock_conversions record and moves stock.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"prepared_item_id\": \"{{prepared_item_id}}\",\n    \"packs\": 2\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Recipes",
+            "item": [
+                {
+                    "name": "List Recipes (GET /api/v1/recipes)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes?branch_id={{branch_id}}&menu_item_id={{menu_item_id}}&search=Cheeseburger&sort_by=created_at&sort_direction=desc&all=false&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "menu_item_id",
+                                    "value": "{{menu_item_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "Cheeseburger",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_by",
+                                    "value": "created_at",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort_direction",
+                                    "value": "desc",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "all",
+                                    "value": "false",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Recipe (with ingredients) (POST /api/v1/recipes)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Classic Cheeseburger Recipe\",\n    \"menu_item_id\": \"{{menu_item_id}}\",\n    \"branch_id\": 1,\n    \"ingredients\": [\n        {\n            \"inventory_item_id\": \"{{prepared_item_id}}\",\n            \"quantity\": 1,\n            \"unit\": \"pcs\"\n        },\n        {\n            \"inventory_item_id\": \"{{inventory_item_id}}\",\n            \"quantity\": 0.02,\n            \"unit\": \"kg\"\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Recipe (GET /api/v1/recipes/{{recipe_id}})",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes",
+                                "{{recipe_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Recipe (replace ingredients) (PUT /api/v1/recipes/{{recipe_id}})",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes",
+                                "{{recipe_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Classic Cheeseburger Recipe (v2)\",\n    \"ingredients\": [\n        {\n            \"inventory_item_id\": \"{{prepared_item_id}}\",\n            \"quantity\": 2,\n            \"unit\": \"pcs\"\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Recipe (DELETE /api/v1/recipes/{{recipe_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes",
+                                "{{recipe_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add Ingredient To Recipe (POST /api/v1/recipes/{{recipe_id}}/ingredients)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes/{{recipe_id}}/ingredients",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes",
+                                "{{recipe_id}}",
+                                "ingredients"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inventory_item_id\": \"{{inventory_item_id}}\",\n    \"quantity\": 0.05,\n    \"unit\": \"kg\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove Ingredient From Recipe (DELETE /api/v1/recipes/{{recipe_id}}/ingredients/{{ingredient_id}})",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/recipes/{{recipe_id}}/ingredients/{{ingredient_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "recipes",
+                                "{{recipe_id}}",
+                                "ingredients",
+                                "{{ingredient_id}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}
