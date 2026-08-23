@@ -72,6 +72,12 @@ class AuthController extends Controller
             $user->user_type = 'driver';
             $user->save();
 
+            $licenseImagePath = null;
+            if ($request->hasFile('license_image')) {
+                $request->validate(['license_image' => 'file|mimes:jpeg,png,jpg,webp,pdf|max:10240']);
+                $licenseImagePath = $request->file('license_image')->store('drivers/licenses', 'public');
+            }
+
             Driver::create([
                 'user_id' => $user->id,
                 'branch_id' => $request->input('branch_id', 1),
@@ -79,6 +85,7 @@ class AuthController extends Controller
                 'phone' => $user->phone ?? 'N/A',
                 'vehicle_type' => $request->input('vehicle_type', 'Motorcycle'),
                 'license_number' => $request->input('license_number'),
+                'license_image' => $licenseImagePath,
                 'kyc_status' => 'pending',
                 'is_online' => false,
                 'status' => 'available',
@@ -111,6 +118,9 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Registration successful! A 5-digit verification code has been sent to your email.',
             'user' => $user,
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
             'otp_sent' => true,
         ], 201);
     }
@@ -166,7 +176,7 @@ class AuthController extends Controller
         $user->email_verified_at = now();
         $user->save();
 
-        $user->load('role.permissions');
+        $user->load(['driver.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -174,6 +184,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -409,6 +422,7 @@ class AuthController extends Controller
         // Revoke previous tokens
         $user->tokens()->delete();
 
+        $user->load(['driver.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -416,6 +430,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -507,16 +524,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Check if driver KYC status is approved
-        $user->load('driver');
-        if ($user->driver && $user->driver->kyc_status !== 'approved') {
-            return response()->json([
-                'message' => 'Your driver account KYC status is currently \'' . $user->driver->kyc_status . '\'. Admin approval is required before accessing the dashboard.',
-                'kyc_approved' => false,
-                'kyc_status' => $user->driver->kyc_status,
-                'user' => $user,
-            ], 403);
-        }
+        $user->load(['driver.branch', 'role.permissions']);
 
         // Revoke previous tokens optionally
         $user->tokens()->delete();
@@ -528,6 +536,9 @@ class AuthController extends Controller
             'user' => $user,
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
         ]);
     }
 
@@ -536,10 +547,13 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = Auth::user()->load(['addresses', 'driver']);
+        $user = Auth::user()->load(['addresses', 'driver.branch', 'role.permissions']);
 
         return response()->json([
             'user' => $user,
+            'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
+            'is_online' => (bool) ($user->driver?->is_online ?? false),
+            'status' => $user->driver?->status ?? 'available',
             'permissions' => $user->role ? $user->role->permissions->pluck('name') : [],
             'is_super_admin' => $user->isSuperAdmin(),
             'is_branch_admin' => $user->isBranchAdmin(),

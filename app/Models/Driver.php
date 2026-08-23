@@ -19,10 +19,26 @@ class Driver extends Model
         'phone',
         'vehicle_type',
         'license_number',
+        'license_image',
         'kyc_status',
+        'reject_reason',
         'is_online',
         'status'
     ];
+
+    protected $appends = [
+        'license_image_url',
+    ];
+
+    public function getLicenseImageUrlAttribute(): ?string
+    {
+        if (!$this->license_image) {
+            return null;
+        }
+        return str_starts_with($this->license_image, 'http')
+            ? $this->license_image
+            : asset('storage/' . $this->license_image);
+    }
 
     protected $casts = [
         'is_online' => 'boolean',
