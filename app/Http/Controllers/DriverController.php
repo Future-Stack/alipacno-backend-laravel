@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\DriverKycStatusMail;
 use App\Models\Driver;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -120,8 +121,23 @@ class DriverController extends Controller
             : ['phone' => $validated['phone']];
 
         $driver = Driver::updateOrCreate($matchCriteria, $validated);
+        $freshDriver = $driver->load(['branch', 'user']);
 
-        return response()->json($driver->load(['branch', 'user']), 200);
+        // In-app Bell Notification for Branch Managers and Super Admins
+        try {
+            Notification::create([
+                'user_id' => null, // Available for Super Admins and Branch Managers
+                'branch_id' => $freshDriver->branch_id,
+                'title' => 'Driver KYC Submitted for Verification',
+                'message' => "Driver '{$freshDriver->name}' has submitted KYC documents for verification and approval.",
+                'type' => 'delivery',
+                'is_read' => false,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Driver KYC Submission Admin Notification Error: ' . $e->getMessage());
+        }
+
+        return response()->json($freshDriver, 200);
     }
 
     /**
@@ -186,15 +202,34 @@ class DriverController extends Controller
             $validated['license_image'] = $request->file('license_image')->store('drivers/licenses', 'public');
         }
 
+        $isResubmitting = in_array($driver->kyc_status, ['pending', 'rejected']);
+
         // If driver details are updated and kyc_status is not explicitly passed, auto-submit
-        if (!isset($validated['kyc_status']) && in_array($driver->kyc_status, ['pending', 'rejected'])) {
+        if (!isset($validated['kyc_status']) && $isResubmitting) {
             $validated['kyc_status'] = 'submitted';
             $validated['reject_reason'] = null;
         }
 
         $driver->update($validated);
+        $freshDriver = $driver->load(['branch', 'user']);
 
-        return response()->json($driver->load(['branch', 'user']));
+        // If driver resubmitted info, notify Super Admin and Branch Manager
+        if ($isResubmitting && ($freshDriver->kyc_status === 'submitted')) {
+            try {
+                Notification::create([
+                    'user_id' => null,
+                    'branch_id' => $freshDriver->branch_id,
+                    'title' => 'Driver KYC Resubmitted for Approval',
+                    'message' => "Driver '{$freshDriver->name}' has updated and resubmitted KYC details for verification.",
+                    'type' => 'delivery',
+                    'is_read' => false,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Driver KYC Resubmission Notification Error: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json($freshDriver);
     }
 
     /**
@@ -295,6 +330,20 @@ class DriverController extends Controller
 
         $freshDriver = $driver->fresh(['branch', 'user']);
 
+        // In-app Bell Notification for Branch / Admin
+        try {
+            Notification::create([
+                'user_id' => null, // broadcast to branch / all admins
+                'branch_id' => $freshDriver->branch_id,
+                'title' => 'New Driver KYC Submitted',
+                'message' => "Driver '{$freshDriver->name}' has submitted KYC documents for verification.",
+                'type' => 'delivery',
+                'is_read' => false,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('KYC Submission Notification Error: ' . $e->getMessage());
+        }
+
         return response()->json([
             'message' => 'KYC documents and information submitted successfully. Waiting for admin approval.',
             'kyc_status' => 'submitted',
@@ -306,7 +355,7 @@ class DriverController extends Controller
 
     /**
      * Update driver KYC approval status (Super Admin / Branch Manager).
-     * Automatically handles approval / rejection and emails rejection reason to the driver.
+     * Automatically handles approval / rejection, sends email, and creates in-app notification.
      */
     public function updateKycStatus(Request $request, Driver $driver)
     {
@@ -351,7 +400,7 @@ class DriverController extends Controller
         $driver->update($updateData);
         $freshDriver = $driver->fresh(['branch', 'user']);
 
-        // Send email to the driver
+        // 1. Send Email to the driver
         $driverEmail = $freshDriver->user?->email;
         if ($driverEmail) {
             try {
@@ -365,8 +414,37 @@ class DriverController extends Controller
             }
         }
 
+        // 2. Create In-App Bell Notification for the Driver
+        $targetUserId = $freshDriver->user_id ?? \App\Models\User::where('phone', $freshDriver->phone)->value('id');
+        if ($targetUserId) {
+            try {
+                $notificationTitle = $status === 'approved'
+                    ? 'KYC Verification Approved'
+                    : ($status === 'rejected'
+                        ? 'KYC Verification Rejected'
+                        : 'KYC Status Updated');
+
+                $notificationMessage = $status === 'approved'
+                    ? 'Congratulations! Your Driver KYC documents have been approved. You can now go online and accept delivery orders.'
+                    : ($status === 'rejected'
+                        ? "Your Driver KYC verification was rejected. Reason: {$rejectReason}"
+                        : "Your Driver KYC status is now: " . ucfirst($status));
+
+                Notification::create([
+                    'user_id' => $targetUserId,
+                    'branch_id' => $freshDriver->branch_id,
+                    'title' => $notificationTitle,
+                    'message' => $notificationMessage,
+                    'type' => 'delivery',
+                    'is_read' => false,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Driver KYC In-App Notification Error: ' . $e->getMessage());
+            }
+        }
+
         return response()->json([
-            'message' => "Driver KYC status updated to '{$status}' successfully." . ($status === 'rejected' ? ' Rejection reason has been emailed to the driver.' : ''),
+            'message' => "Driver KYC status updated to '{$status}' successfully." . ($status === 'rejected' ? ' Rejection reason has been emailed and notified to the driver.' : ''),
             'kyc_status' => $freshDriver->kyc_status,
             'is_online' => (bool) $freshDriver->is_online,
             'status' => $freshDriver->status,
