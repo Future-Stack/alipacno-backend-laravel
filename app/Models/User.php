@@ -22,6 +22,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'gender',
         'password',
         'avatar',
         'user_image',
@@ -75,22 +76,24 @@ class User extends Authenticatable
 
     public function getAvatarUrlAttribute(): ?string
     {
-        if (!$this->avatar) {
+        $image = $this->avatar ?? $this->user_image;
+        if (!$image) {
             return null;
         }
-        return str_starts_with($this->avatar, 'http')
-            ? $this->avatar
-            : asset('storage/' . $this->avatar);
+        return str_starts_with($image, 'http')
+            ? $image
+            : asset('storage/' . $image);
     }
 
     public function getUserImageUrlAttribute(): ?string
     {
-        if (!$this->user_image) {
+        $image = $this->user_image ?? $this->avatar;
+        if (!$image) {
             return null;
         }
-        return str_starts_with($this->user_image, 'http')
-            ? $this->user_image
-            : asset('storage/' . $this->user_image);
+        return str_starts_with($image, 'http')
+            ? $image
+            : asset('storage/' . $image);
     }
 
     /**
@@ -117,6 +120,16 @@ class User extends Authenticatable
     public function addresses()
     {
         return $this->hasMany(UserAddress::class);
+    }
+
+    public function defaultAddress()
+    {
+        return $this->hasOne(UserAddress::class)->where('is_default', true)->latestOfMany();
+    }
+
+    public function address()
+    {
+        return $this->hasOne(UserAddress::class)->latestOfMany();
     }
 
     public function carts()
