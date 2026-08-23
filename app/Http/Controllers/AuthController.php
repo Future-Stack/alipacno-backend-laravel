@@ -23,7 +23,8 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'phone' => 'nullable|string|max:20|unique:users',
+            'phone' => 'nullable|string|max:50|unique:users',
+            'gender' => 'nullable|string|max:20',
             'password' => 'required|string|min:8|confirmed',
             'avatar' => 'nullable',
             'user_image' => 'nullable',
@@ -38,6 +39,7 @@ class AuthController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
+            'gender' => $validated['gender'] ?? null,
             'password' => Hash::make($validated['password']),
             'user_type' => $validated['user_type'] ?? 'customer',
             'role_id' => $validated['role_id'] ?? null,
@@ -547,10 +549,11 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = Auth::user()->load(['addresses', 'driver.branch', 'role.permissions']);
+        $user = Auth::user()->load(['addresses', 'defaultAddress', 'driver.branch', 'role.permissions']);
 
         return response()->json([
             'user' => $user,
+            'address' => $user->defaultAddress ?? $user->addresses->first(),
             'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
             'is_online' => (bool) ($user->driver?->is_online ?? false),
             'status' => $user->driver?->status ?? 'available',

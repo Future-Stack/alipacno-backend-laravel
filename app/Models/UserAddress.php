@@ -12,7 +12,21 @@ class UserAddress extends Model
 
     protected $table = 'user_addresses';
 
-    protected $fillable = ['user_id', 'label', 'contact_name', 'address', 'postcode', 'latitude', 'longitude', 'is_default'];
+    protected $fillable = [
+        'user_id',
+        'label',
+        'contact_name',
+        'phone',
+        'country',
+        'postcode',
+        'city',
+        'address_line_1',
+        'address_line_2',
+        'address',
+        'latitude',
+        'longitude',
+        'is_default',
+    ];
 
     public function user()
     {
