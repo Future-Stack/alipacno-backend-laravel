@@ -22,6 +22,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'gender',
         'password',
         'avatar',
         'user_image',
@@ -47,26 +48,52 @@ class User extends Authenticatable
     protected $appends = [
         'avatar_url',
         'user_image_url',
+        'kyc_status',
+        'is_online',
+        'driver_status',
+        'reject_reason',
     ];
+
+    public function getKycStatusAttribute(): ?string
+    {
+        return $this->driver?->kyc_status ?? ($this->user_type === 'driver' ? 'pending' : null);
+    }
+
+    public function getIsOnlineAttribute(): bool
+    {
+        return (bool) ($this->driver?->is_online ?? false);
+    }
+
+    public function getDriverStatusAttribute(): ?string
+    {
+        return $this->driver?->status ?? ($this->user_type === 'driver' ? 'available' : null);
+    }
+
+    public function getRejectReasonAttribute(): ?string
+    {
+        return $this->driver?->reject_reason;
+    }
 
     public function getAvatarUrlAttribute(): ?string
     {
-        if (!$this->avatar) {
+        $image = $this->avatar ?? $this->user_image;
+        if (!$image) {
             return null;
         }
-        return str_starts_with($this->avatar, 'http')
-            ? $this->avatar
-            : asset('storage/' . $this->avatar);
+        return str_starts_with($image, 'http')
+            ? $image
+            : asset('storage/' . $image);
     }
 
     public function getUserImageUrlAttribute(): ?string
     {
-        if (!$this->user_image) {
+        $image = $this->user_image ?? $this->avatar;
+        if (!$image) {
             return null;
         }
-        return str_starts_with($this->user_image, 'http')
-            ? $this->user_image
-            : asset('storage/' . $this->user_image);
+        return str_starts_with($image, 'http')
+            ? $image
+            : asset('storage/' . $image);
     }
 
     /**
@@ -93,6 +120,16 @@ class User extends Authenticatable
     public function addresses()
     {
         return $this->hasMany(UserAddress::class);
+    }
+
+    public function defaultAddress()
+    {
+        return $this->hasOne(UserAddress::class)->where('is_default', true)->latestOfMany();
+    }
+
+    public function address()
+    {
+        return $this->hasOne(UserAddress::class)->latestOfMany();
     }
 
     public function carts()
@@ -127,10 +164,83 @@ class User extends Authenticatable
             $roles = array_map('trim', explode(',', $roles));
         }
 
-        $userTypeMatch = in_array($this->user_type, $roles);
-        $roleNameMatch = $this->role && in_array($this->role->name, $roles);
+        $normalizedRequiredRoles = array_map(function ($r) {
+            return strtolower(str_replace([' ', '-'], '_', trim($r)));
+        }, (array) $roles);
 
-        return $userTypeMatch || $roleNameMatch || $this->user_type === 'super_admin';
+        // Super Admin & Admin bypass check
+        if ($this->user_type === 'super_admin' || $this->user_type === 'admin') {
+            return true;
+        }
+
+        // Direct user_type matching
+        $normalizedUserType = strtolower(str_replace([' ', '-'], '_', (string) $this->user_type));
+        if (in_array($normalizedUserType, $normalizedRequiredRoles)) {
+            return true;
+        }
+
+        // Driver check (via user_type, driver relation, or role)
+        $wantsDriver = in_array('driver', $normalizedRequiredRoles) || in_array('delivery_driver', $normalizedRequiredRoles);
+        if ($wantsDriver) {
+            if ($this->user_type === 'driver') {
+                return true;
+            }
+            if ($this->relationLoaded('driver') ? (bool) $this->driver : $this->driver()->exists()) {
+                return true;
+            }
+        }
+
+        // Branch Admin check
+        $wantsBranchAdmin = in_array('branch_admin', $normalizedRequiredRoles) || in_array('branch_manager', $normalizedRequiredRoles);
+        if ($wantsBranchAdmin && ($this->user_type === 'branch_admin' || $this->isBranchAdmin())) {
+            return true;
+        }
+
+        // HQ Admin check
+        $wantsHqAdmin = in_array('hq_admin', $normalizedRequiredRoles);
+        if ($wantsHqAdmin && $this->user_type === 'hq_admin') {
+            return true;
+        }
+
+        // Role-based matching from roles table
+        $role = $this->role;
+        if (!$role && $this->role_id) {
+            $role = Role::find($this->role_id);
+        }
+
+        if ($role) {
+            $roleName = strtolower(trim($role->name));
+            $normalizedRoleName = strtolower(str_replace([' ', '-', '/'], '_', $role->name));
+
+            if (in_array($roleName, $normalizedRequiredRoles) || in_array($normalizedRoleName, $normalizedRequiredRoles)) {
+                return true;
+            }
+
+            // Role aliases
+            if ($wantsDriver && str_contains($roleName, 'driver')) {
+                return true;
+            }
+            if ($wantsBranchAdmin && (str_contains($roleName, 'branch') || str_contains($roleName, 'manager'))) {
+                return true;
+            }
+            if (in_array('chef', $normalizedRequiredRoles) && (str_contains($roleName, 'chef') || str_contains($roleName, 'kitchen'))) {
+                return true;
+            }
+            if (in_array('cashier', $normalizedRequiredRoles) && (str_contains($roleName, 'cashier') || str_contains($roleName, 'pos'))) {
+                return true;
+            }
+            if (in_array('waiter', $normalizedRequiredRoles) && (str_contains($roleName, 'waiter') || str_contains($roleName, 'floor'))) {
+                return true;
+            }
+            if (in_array('inventory_manager', $normalizedRequiredRoles) && str_contains($roleName, 'inventory')) {
+                return true;
+            }
+            if (in_array('staff', $normalizedRequiredRoles) && !in_array($roleName, ['customer'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function hasAnyRole($roles): bool
