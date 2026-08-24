@@ -295,8 +295,10 @@ Route::prefix('v1')->group(function () {
         });
 
         // Delivery & Driver Fleet
-        Route::middleware('role:super_admin,hq_admin,branch_admin,driver')->group(function () {
+        Route::middleware('role:super_admin,hq_admin,branch_admin,driver,admin,staff')->group(function () {
+            Route::post('drivers/submit-kyc', [DriverController::class, 'submitKyc']);
             Route::put('drivers/{driver}/status', [DriverController::class, 'updateStatus']);
+            Route::put('drivers/{driver}/kyc-status', [DriverController::class, 'updateKycStatus']);
             Route::apiResource('drivers', DriverController::class);
             Route::apiResource('deliveries', DeliveryController::class);
         });
