@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Events\NewDeliveryBroadcastEvent;
+use App\Events\OrderAcceptedBroadcastEvent;
 use App\Models\Branch;
 use App\Models\Cart;
+use App\Models\Delivery;
 use App\Models\Driver;
 use App\Models\KitchenOrder;
 use App\Models\KitchenStation;
 use App\Models\LoyaltyPoint;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
@@ -55,6 +58,12 @@ class OrderController extends Controller
 
         if ($request->filled('order_type')) {
             $query->where('order_type', $request->order_type);
+        }
+
+        if ($request->boolean('unassigned') || $request->boolean('unassigned_only')) {
+            $query->whereNull('assigned_driver_id');
+        } elseif ($request->filled('assigned_driver_id')) {
+            $query->where('assigned_driver_id', $request->assigned_driver_id);
         }
 
         if ($request->user() && $request->user()->isCustomer()) {
@@ -397,6 +406,77 @@ class OrderController extends Controller
 
         $order->update($validated);
 
+        // Handle Manual Driver Assignment by Admin
+        if (!empty($validated['assigned_driver_id'])) {
+            $driverId = $validated['assigned_driver_id'];
+            $driver = Driver::with('user')->find($driverId);
+
+            if ($driver) {
+                // Update driver status
+                $driver->update(['status' => 'on_delivery']);
+
+                // Create or update delivery record
+                Delivery::updateOrCreate(
+                    ['order_id' => $order->id],
+                    [
+                        'driver_id' => $driver->id,
+                        'delivery_status' => 'assigned',
+                        'estimated_time' => $validated['estimated_delivery_time'] ?? now()->addMinutes(30),
+                    ]
+                );
+
+                // Notify Assigned Driver
+                try {
+                    $driverUserId = $driver->user_id;
+                    if ($driverUserId) {
+                        Notification::create([
+                            'user_id' => $driverUserId,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'New Delivery Task Assigned',
+                            'message' => "You have been assigned to deliver order #{$order->order_number}.",
+                            'type' => 'delivery',
+                            'is_read' => false,
+                        ]);
+                    }
+
+                    $driverFcmToken = $driver->user?->fcm_token;
+                    if ($driverFcmToken) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $driverFcmToken,
+                            "New Delivery Task Assigned!",
+                            "You have been assigned to deliver order #{$order->order_number} (£" . number_format((float)$order->delivery_fee, 2) . ").",
+                            ['type' => 'delivery_assigned', 'order_id' => (string) $order->id]
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Driver Assignment Notification Error: ' . $e->getMessage());
+                }
+
+                // Notify Customer
+                if ($order->user_id) {
+                    try {
+                        Notification::create([
+                            'user_id' => $order->user_id,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'Driver Assigned to Your Order',
+                            'message' => "Driver '{$driver->name}' has been assigned to deliver your order #{$order->order_number}.",
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Customer Driver Assignment Notification Error: ' . $e->getMessage());
+                    }
+                }
+
+                // Broadcast Reverb WebSocket event to dismiss card on other drivers' screens
+                try {
+                    broadcast(new OrderAcceptedBroadcastEvent($order, $driver));
+                } catch (\Exception $e) {
+                    Log::error('Admin Order Assigned Broadcast Error: ' . $e->getMessage());
+                }
+            }
+        }
+
         // Update linked KitchenOrder status if order status changed
         if (isset($validated['order_status'])) {
             if ($validated['order_status'] === 'preparing') {
@@ -421,12 +501,110 @@ class OrderController extends Controller
     /**
      * Cancel/delete order.
      */
-    public function destroy(Order $order)
+    /**
+     * Dedicated Action: Manually assign driver to order (Super Admin / Branch Admin).
+     */
+    public function assignDriver(Request $request, Order $order)
     {
-        $order->update(['order_status' => 'cancelled']);
+        $authUser = $request->user();
+        if (!$authUser || (!$authUser->isSuperAdmin() && !$authUser->isBranchAdmin())) {
+            return response()->json(['message' => 'Unauthorized: Only admins can assign drivers.'], 403);
+        }
 
-        return response()->json(['message' => 'Order cancelled successfully']);
+        $validated = $request->validate([
+            'driver_id' => 'required|exists:drivers,id',
+            'order_status' => 'nullable|in:pending,accepted,preparing,ready,out_for_delivery,delivered,completed',
+            'delivery_status' => 'nullable|in:assigned,picked_up,on_the_way,delivered,failed',
+            'estimated_delivery_time' => 'nullable|date',
+        ]);
+
+        $driver = Driver::with('user')->find($validated['driver_id']);
+
+        if (!$driver) {
+            return response()->json(['message' => 'Driver not found.'], 404);
+        }
+
+        if ($driver->kyc_status !== 'approved') {
+            return response()->json(['message' => 'Cannot assign: Driver KYC is not approved yet.'], 422);
+        }
+
+        return DB::transaction(function () use ($order, $driver, $validated) {
+            // 1. Assign driver & update order status
+            $nextStatus = $validated['order_status'] ?? (in_array($order->order_status, ['pending', 'accepted']) ? 'accepted' : $order->order_status);
+            $order->update([
+                'assigned_driver_id' => $driver->id,
+                'order_status' => $nextStatus,
+                'estimated_delivery_time' => $validated['estimated_delivery_time'] ?? $order->estimated_delivery_time,
+            ]);
+
+            // 2. Update driver status
+            $driver->update(['status' => 'on_delivery']);
+
+            // 3. Create or update delivery record
+            $delivery = Delivery::updateOrCreate(
+                ['order_id' => $order->id],
+                [
+                    'driver_id' => $driver->id,
+                    'delivery_status' => $validated['delivery_status'] ?? 'assigned',
+                    'estimated_time' => $validated['estimated_delivery_time'] ?? now()->addMinutes(30),
+                ]
+            );
+
+            // 4. Notify Driver (In-App & FCM Push)
+            try {
+                if ($driver->user_id) {
+                    Notification::create([
+                        'user_id' => $driver->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => 'New Delivery Task Assigned',
+                        'message' => "You have been assigned to deliver order #{$order->order_number}.",
+                        'type' => 'delivery',
+                        'is_read' => false,
+                    ]);
+                }
+
+                $driverToken = $driver->user?->fcm_token;
+                if ($driverToken) {
+                    FirebaseNotificationService::sendPushNotification(
+                        $driverToken,
+                        "New Delivery Task Assigned!",
+                        "You have been assigned to deliver order #{$order->order_number} (£" . number_format((float)$order->delivery_fee, 2) . ").",
+                        ['type' => 'delivery_assigned', 'order_id' => (string) $order->id]
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::error('Driver Assignment Notification Error: ' . $e->getMessage());
+            }
+
+            // 5. Notify Customer (In-App)
+            if ($order->user_id) {
+                try {
+                    Notification::create([
+                        'user_id' => $order->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => 'Driver Assigned to Your Order',
+                        'message' => "Driver '{$driver->name}' has been assigned to deliver your order #{$order->order_number}.",
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Customer Driver Assignment Notification Error: ' . $e->getMessage());
+                }
+            }
+
+            // 6. Broadcast to dismiss from other drivers' screens
+            try {
+                broadcast(new OrderAcceptedBroadcastEvent($order, $driver));
+            } catch (\Exception $e) {
+                Log::error('Admin Order Assigned Broadcast Error: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Driver '{$driver->name}' has been assigned to order #{$order->order_number} successfully.",
+                'order' => $order->fresh(['assignedDriver', 'delivery']),
+                'delivery' => $delivery->fresh(['driver']),
+            ]);
+        });
     }
-
-
 }
