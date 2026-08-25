@@ -60,6 +60,11 @@ class Order extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function address()
+    {
+        return $this->belongsTo(UserAddress::class, 'address_id');
+    }
+
     public function assignedStaff()
     {
         return $this->belongsTo(Staff::class, 'assigned_staff_id');
@@ -88,5 +93,48 @@ class Order extends Model
     public function kitchenOrders()
     {
         return $this->hasMany(KitchenOrder::class);
+    }
+
+    /**
+     * Calculate dynamic distance in KM between Branch and Delivery Address using Haversine formula.
+     */
+    public function calculateDistanceKm(): float
+    {
+        $branchLat = (float) ($this->branch?->latitude ?? 0);
+        $branchLon = (float) ($this->branch?->longitude ?? 0);
+
+        $address = $this->address;
+        $custLat = (float) ($address?->latitude ?? 0);
+        $custLon = (float) ($address?->longitude ?? 0);
+
+        if ($branchLat != 0 && $branchLon != 0 && $custLat != 0 && $custLon != 0) {
+            $earthRadius = 6371; // km
+            $dLat = deg2rad($custLat - $branchLat);
+            $dLon = deg2rad($custLon - $branchLon);
+            $a = sin($dLat / 2) * sin($dLat / 2) +
+                cos(deg2rad($branchLat)) * cos(deg2rad($custLat)) *
+                sin($dLon / 2) * sin($dLon / 2);
+            $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+            return round($earthRadius * $c, 1);
+        }
+
+        return 2.5; // Standard city radius fallback if coordinates not pinned
+    }
+
+    /**
+     * Calculate dynamic remaining delivery time in minutes.
+     */
+    public function calculateRemainingMinutes(): int
+    {
+        if ($this->estimated_delivery_time) {
+            $diff = now()->diffInMinutes(\Carbon\Carbon::parse($this->estimated_delivery_time), false);
+            if ($diff > 0) {
+                return (int) $diff;
+            }
+        }
+
+        // Estimate based on distance (approx 20 km/h city motorcycle speed + 5 min prep/buffer)
+        $distance = $this->calculateDistanceKm();
+        return (int) max(5, ceil(($distance / 20) * 60) + 5);
     }
 }

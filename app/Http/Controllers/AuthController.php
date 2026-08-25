@@ -33,6 +33,8 @@ class AuthController extends Controller
             'branch_id' => 'nullable|exists:branches,id',
             'vehicle_type' => 'nullable|string|max:100',
             'license_number' => 'nullable|string|max:100',
+            'fcm_token' => 'nullable|string',
+            'terms_accepted' => 'nullable|boolean',
         ]);
 
         $userPayload = [
@@ -44,7 +46,9 @@ class AuthController extends Controller
             'user_type' => $validated['user_type'] ?? 'customer',
             'role_id' => $validated['role_id'] ?? null,
             'status' => 'active',
+            'terms_accepted' => $validated['terms_accepted'] ?? true,
             'email_verified_at' => null,
+            'fcm_token' => $validated['fcm_token'] ?? null,
         ];
 
         // Handle avatar image file upload if present

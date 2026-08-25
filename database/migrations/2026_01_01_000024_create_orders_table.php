@@ -21,7 +21,7 @@ return new class extends Migration
             $table->foreignId('table_id')->nullable();
             $table->foreignId('reservation_id')->nullable();
             $table->enum('order_type', ['delivery', 'collection', 'dine_in', 'table', 'table_order'])->default('delivery');
-            $table->enum('order_status', ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled', 'refunded'])->default('pending');
+            $table->enum('order_status', ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed', 'cancelled', 'refunded'])->default('pending');
             $table->enum('payment_status', ['pending', 'paid', 'failed', 'refunded'])->default('pending');
             $table->enum('payment_method', ['stripe', 'cash', 'card', 'digital', 'apple_pay', 'google_pay'])->default('cash');
             $table->string('order_source')->default('online');

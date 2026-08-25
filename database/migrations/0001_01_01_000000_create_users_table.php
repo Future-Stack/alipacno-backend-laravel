@@ -28,6 +28,7 @@ return new class extends Migration
             $table->enum('status', ['active', 'inactive', 'blocked'])->default('active');
              // Terms & Conditions
             $table->boolean('terms_accepted')->default(false);
+            $table->string('fcm_token')->nullable();
              // Soft Delete
             $table->softDeletes();
             $table->rememberToken();

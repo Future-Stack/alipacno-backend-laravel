@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
-use App\Models\OrderItem;
+use App\Events\NewDeliveryBroadcastEvent;
+use App\Models\Branch;
 use App\Models\Cart;
+use App\Models\Driver;
 use App\Models\KitchenOrder;
 use App\Models\KitchenStation;
 use App\Models\LoyaltyPoint;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\User;
-use App\Models\Branch;
 use App\Models\UserAddress;
+use App\Services\FirebaseNotificationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Stripe\StripeClient;
 
 class OrderController extends Controller
@@ -303,6 +307,40 @@ class OrderController extends Controller
                 ]);
 
 
+            }
+
+            // Broadcast to Reverb WebSocket & Send FCM Push for Delivery orders
+            if ($order->order_type === 'delivery' && $order->branch_id) {
+                try {
+                    // 1. Reverb WebSocket Broadcast to driver channel
+                    broadcast(new NewDeliveryBroadcastEvent($order));
+
+                    // 2. FCM Push Notification to Online Drivers of this Branch (from users.fcm_token)
+                    $onlineDriverTokens = User::whereHas('driver', function ($q) use ($order) {
+                        $q->where('branch_id', $order->branch_id)
+                          ->where('kyc_status', 'approved')
+                          ->where('is_online', true)
+                          ->where('status', 'available');
+                    })
+                    ->whereNotNull('fcm_token')
+                    ->pluck('fcm_token')
+                    ->toArray();
+
+                    if (!empty($onlineDriverTokens)) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $onlineDriverTokens,
+                            "New Delivery Task Available!",
+                            "Order #{$order->order_number} is available for delivery (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
+                            [
+                                'type' => 'new_delivery',
+                                'order_id' => (string) $order->id,
+                                'order_number' => $order->order_number,
+                            ]
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Delivery Dispatch Broadcast/FCM Error: ' . $e->getMessage());
+                }
             }
 
             return response()->json([

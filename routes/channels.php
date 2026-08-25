@@ -35,3 +35,15 @@ Broadcast::channel('delivery.{deliveryId}', function ($user, $deliveryId) {
 
     return false;
 });
+
+Broadcast::channel('branch.{branchId}.drivers', function ($user, $branchId) {
+    if ($user->hasRole(['super_admin', 'hq_admin', 'branch_admin'])) {
+        return true;
+    }
+
+    if ($user->driver && (int) $user->driver->branch_id === (int) $branchId) {
+        return true;
+    }
+
+    return false;
+});
