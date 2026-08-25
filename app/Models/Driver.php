@@ -23,7 +23,7 @@ class Driver extends Model
         'kyc_status',
         'reject_reason',
         'is_online',
-        'status'
+        'status',
     ];
 
     protected $appends = [
@@ -57,6 +57,11 @@ class Driver extends Model
     public function deliveries()
     {
         return $this->hasMany(Delivery::class);
+    }
+
+    public function declinedOrders()
+    {
+        return $this->hasMany(DriverDeclinedOrder::class);
     }
 
     public function locations(): HasMany

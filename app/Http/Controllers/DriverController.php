@@ -2,10 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderAcceptedBroadcastEvent;
 use App\Mail\DriverKycStatusMail;
+use App\Models\Delivery;
 use App\Models\Driver;
+use App\Models\DriverDeclinedOrder;
 use App\Models\Notification;
+use App\Models\Order;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -450,6 +456,340 @@ class DriverController extends Controller
             'status' => $freshDriver->status,
             'reject_reason' => $freshDriver->reject_reason,
             'driver' => $freshDriver,
+        ]);
+    }
+
+    /**
+     * Get Upcoming Unassigned Delivery Requests for the authenticated driver's branch.
+     * Matches the mobile app's 'Upcoming Request' card view.
+     */
+    public function upcomingRequests(Request $request)
+    {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $driver = $authUser->driver;
+        if (!$driver) {
+            // If user has role admin, allow passing driver_id or return empty
+            if ($request->filled('driver_id') && ($authUser->isSuperAdmin() || $authUser->isBranchAdmin())) {
+                $driver = Driver::find($request->driver_id);
+            }
+        }
+
+        if (!$driver) {
+            return response()->json(['message' => 'Driver profile not found.'], 404);
+        }
+
+        // Get IDs of orders declined by this driver
+        $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
+
+        $query = Order::with(['items.menuItem', 'branch', 'address'])
+            ->where('branch_id', $driver->branch_id)
+            ->where('order_type', 'delivery')
+            ->whereNull('assigned_driver_id')
+            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->whereNotIn('id', $declinedOrderIds)
+            ->latest();
+
+        $orders = $query->paginate($request->input('per_page', 15));
+
+        $formattedItems = $orders->getCollection()->map(function ($order) {
+            $firstItem = $order->items->first();
+            $menuItem = $firstItem?->menuItem;
+            $itemsCount = $order->items->count();
+
+            $earnings = (float) $order->delivery_fee;
+
+            return [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'order_status' => $order->order_status,
+                'payment_status' => $order->payment_status,
+                'payment_method' => $order->payment_method,
+                'category_tag' => $menuItem?->category?->name ?? 'Special',
+                'title' => $menuItem ? $menuItem->name . ($itemsCount > 1 ? " + " . ($itemsCount - 1) . " more" : "") : 'Delivery Package',
+                'image_url' => $menuItem?->image_url ?? null,
+                'earnings' => $earnings,
+                'formatted_earnings' => '£' . number_format($earnings, 2),
+                'delivery_fee' => (float) $order->delivery_fee,
+                'formatted_delivery_fee' => $order->delivery_fee > 0 ? '£' . number_format((float) $order->delivery_fee, 2) : 'Free',
+                'rider_tip' => (float) $order->rider_tip,
+                'formatted_rider_tip' => '£' . number_format((float) $order->rider_tip, 2),
+                'total_order_amount' => (float) $order->total,
+                'formatted_total_amount' => '£' . number_format((float) $order->total, 2),
+                'pickup_location' => $order->branch ? ($order->branch->address ?? $order->branch->name) : 'Pacinos Branch',
+                'delivery_location' => $order->delivery_address ?? ($order->address ? $order->address->address_line_1 . ', ' . $order->address->postcode : 'Customer Location'),
+                'customer_name' => $order->customer_name ?? $order->user?->name ?? 'Valued Customer',
+                'customer_phone' => $order->customer_phone ?? $order->user?->phone ?? 'N/A',
+                'distance_km' => $order->calculateDistanceKm(),
+                'distance_remaining' => $order->calculateDistanceKm() . ' km Remaining',
+                'time_remaining_minutes' => $order->calculateRemainingMinutes(),
+                'time_remaining' => $order->calculateRemainingMinutes() . ' mins Remaining',
+                'delivery_time_formatted' => $order->estimated_delivery_time ? Carbon::parse($order->estimated_delivery_time)->format('l, M d, h:i A') : $order->created_at->format('l, M d, h:i A'),
+                'created_at' => $order->created_at->toIso8601String(),
+                'items' => $order->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->menuItem?->name ?? 'Menu Item',
+                        'quantity' => $item->quantity,
+                        'price' => (float) $item->unit_price,
+                        'image_url' => $item->menuItem?->image_url,
+                    ];
+                }),
+            ];
+        });
+
+        return response()->json([
+            'upcoming_count' => $orders->total(),
+            'current_page' => $orders->currentPage(),
+            'last_page' => $orders->lastPage(),
+            'per_page' => $orders->perPage(),
+            'total' => $orders->total(),
+            'data' => $formattedItems,
+        ]);
+    }
+
+    /**
+     * Driver Accepts an Order (Atomic Lock / Concurrency-Safe).
+     * First driver to click 'Accept Task' claims the order.
+     */
+    public function acceptOrder(Request $request, Order $order)
+    {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $driver = $authUser->driver;
+        if (!$driver) {
+            if ($request->filled('driver_id') && ($authUser->isSuperAdmin() || $authUser->isBranchAdmin())) {
+                $driver = Driver::find($request->driver_id);
+            }
+        }
+
+        if (!$driver) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Driver profile not found for this account.'
+            ], 404);
+        }
+
+        if ($driver->kyc_status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your driver profile is not approved yet for accepting deliveries.'
+            ], 403);
+        }
+
+        // Concurrency-safe execution with pessimistic locking
+        return DB::transaction(function () use ($order, $driver) {
+            $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
+
+            if (!$lockedOrder) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found.'
+                ], 404);
+            }
+
+            // Check if order is already assigned
+            if (!empty($lockedOrder->assigned_driver_id)) {
+                return response()->json([
+                    'success' => false,
+                    'is_taken' => true,
+                    'message' => 'Sorry! Another driver has already accepted this delivery task.'
+                ], 409); // 409 Conflict
+            }
+
+            // Assign driver to order
+            $nextStatus = in_array($lockedOrder->order_status, ['pending', 'accepted']) ? 'accepted' : $lockedOrder->order_status;
+            $lockedOrder->update([
+                'assigned_driver_id' => $driver->id,
+                'order_status' => $nextStatus,
+            ]);
+
+            // Create or update delivery record
+            $delivery = Delivery::updateOrCreate(
+                ['order_id' => $lockedOrder->id],
+                [
+                    'driver_id' => $driver->id,
+                    'delivery_status' => 'assigned',
+                    'estimated_time' => now()->addMinutes(30),
+                ]
+            );
+
+            // Update driver status
+            $driver->update([
+                'status' => 'on_delivery'
+            ]);
+
+            // Create in-app notification for the customer & branch
+            try {
+                if ($lockedOrder->user_id) {
+                    Notification::create([
+                        'user_id' => $lockedOrder->user_id,
+                        'branch_id' => $lockedOrder->branch_id,
+                        'title' => 'Driver Assigned to Your Order',
+                        'message' => "Driver '{$driver->name}' has accepted your order #{$lockedOrder->order_number} and will deliver it soon.",
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Order Accept Notification Error: ' . $e->getMessage());
+            }
+
+            // Broadcast Reverb WebSocket event to dismiss card on other drivers' screens
+            try {
+                broadcast(new OrderAcceptedBroadcastEvent($lockedOrder, $driver))->toOthers();
+            } catch (\Exception $e) {
+                Log::error('Order Accepted Broadcast Error: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery task accepted successfully! Order moved to ongoing tasks.',
+                'order' => $lockedOrder->fresh(['branch', 'user', 'items.menuItem']),
+                'delivery' => $delivery->fresh(['driver', 'order']),
+            ], 200);
+        });
+    }
+
+    /**
+     * Update Driver's Firebase Device (FCM) Token.
+     */
+    public function updateFcmToken(Request $request)
+    {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $validated = $request->validate([
+            'fcm_token' => 'required|string',
+        ]);
+
+        $token = $validated['fcm_token'];
+
+        // Update authenticated user's FCM token
+        $authUser->update(['fcm_token' => $token]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'FCM Device token registered successfully for push notifications.',
+            'fcm_token' => $token,
+        ]);
+    }
+
+    /**
+     * Driver Declines an Order.
+     * Hides the order for this specific driver while keeping it open for others.
+     */
+    public function declineOrder(Request $request, Order $order)
+    {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $driver = $authUser->driver;
+        if (!$driver) {
+            if ($request->filled('driver_id') && ($authUser->isSuperAdmin() || $authUser->isBranchAdmin())) {
+                $driver = Driver::find($request->driver_id);
+            }
+        }
+
+        if (!$driver) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Driver profile not found.'
+            ], 404);
+        }
+
+        DriverDeclinedOrder::firstOrCreate(
+            [
+                'driver_id' => $driver->id,
+                'order_id' => $order->id,
+            ],
+            [
+                'reason' => $request->input('reason', 'Driver passed on request'),
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order declined and removed from your upcoming requests list.',
+        ]);
+    }
+
+    /**
+     * Get Driver Deliveries grouped / filtered by tabs:
+     * - all
+     * - ongoing (assigned, picked_up, on_the_way)
+     * - completed (delivered)
+     */
+    public function myDeliveries(Request $request)
+    {
+        $authUser = $request->user();
+        if (!$authUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $driver = $authUser->driver;
+        if (!$driver) {
+            if ($request->filled('driver_id') && ($authUser->isSuperAdmin() || $authUser->isBranchAdmin())) {
+                $driver = Driver::find($request->driver_id);
+            }
+        }
+
+        if (!$driver) {
+            return response()->json(['message' => 'Driver profile not found.'], 404);
+        }
+
+        $tab = $request->input('tab', 'ongoing'); // 'all', 'ongoing', 'completed'
+
+        $query = Delivery::with(['order.items.menuItem', 'order.branch', 'order.address'])
+            ->where('driver_id', $driver->id)
+            ->latest();
+
+        if ($tab === 'ongoing') {
+            $query->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way']);
+        } elseif ($tab === 'completed') {
+            $query->where('delivery_status', 'delivered');
+        }
+
+        $deliveries = $query->paginate($request->input('per_page', 15));
+
+        // Counts for tab badges
+        $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
+        $upcomingCount = Order::where('branch_id', $driver->branch_id)
+            ->where('order_type', 'delivery')
+            ->whereNull('assigned_driver_id')
+            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->whereNotIn('id', $declinedOrderIds)
+            ->count();
+
+        $ongoingCount = Delivery::where('driver_id', $driver->id)
+            ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+            ->count();
+
+        $completedCount = Delivery::where('driver_id', $driver->id)
+            ->where('delivery_status', 'delivered')
+            ->count();
+
+        $allCount = Delivery::where('driver_id', $driver->id)->count();
+
+        return response()->json([
+            'tab_counts' => [
+                'all' => $allCount,
+                'upcoming' => $upcomingCount,
+                'ongoing' => $ongoingCount,
+                'completed' => $completedCount,
+            ],
+            'current_tab' => $tab,
+            'deliveries' => $deliveries,
         ]);
     }
 }

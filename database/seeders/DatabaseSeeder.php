@@ -290,13 +290,17 @@ class DatabaseSeeder extends Seeder
         );
 
         // 8. Seed Delivery Drivers
+        $driverUser = \App\Models\User::where('email', 'driver@restaurant.com')->first();
         \App\Models\Driver::firstOrCreate(
             ['phone' => '+447000000007'],
             [
+                'user_id' => $driverUser?->id,
                 'branch_id' => $branch1->id,
                 'name' => 'Delivery Driver (Alex)',
                 'vehicle_type' => 'Motorcycle',
                 'license_number' => 'DL-99887766',
+                'kyc_status' => 'approved',
+                'is_online' => true,
                 'status' => 'available',
             ]
         );
