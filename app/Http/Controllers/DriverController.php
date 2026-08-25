@@ -50,6 +50,15 @@ class DriverController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+            if ($request->status === 'available') {
+                $query->whereDoesntHave('deliveries', function ($q) {
+                    $q->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way']);
+                });
+            }
+        }
+
+        if ($request->has('is_online')) {
+            $query->where('is_online', $request->boolean('is_online'));
         }
 
         if ($request->filled('search')) {
