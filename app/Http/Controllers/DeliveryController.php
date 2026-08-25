@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Delivery;
 use App\Models\Driver;
+use App\Models\Notification;
 use App\Models\Order;
+use App\Services\FirebaseNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
 {
@@ -84,17 +87,78 @@ class DeliveryController extends Controller
         ]);
 
         $status = $validated['delivery_status'];
+        $order = $delivery->order;
+        $driver = $delivery->driver;
+        $driverName = $driver?->name ?? 'Driver';
 
         if (($status === 'picked_up' || $status === 'on_the_way') && !$delivery->pickup_time) {
             $validated['pickup_time'] = now();
             $delivery->order()->update(['order_status' => 'out_for_delivery']);
+
+            // Notify Customer (In-App & FCM Push)
+            if ($order && $order->user_id) {
+                try {
+                    $notifTitle = "Order Out for Delivery 🛵";
+                    $notifMessage = "Your order #{$order->order_number} has been picked up by {$driverName} and is on the way!";
+
+                    Notification::create([
+                        'user_id' => $order->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => $notifTitle,
+                        'message' => $notifMessage,
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+
+                    $customerToken = $order->user?->fcm_token;
+                    if ($customerToken) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $customerToken,
+                            $notifTitle,
+                            $notifMessage,
+                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'out_for_delivery']
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Customer Pickup Notification Error: ' . $e->getMessage());
+                }
+            }
         }
 
         if ($status === 'delivered') {
             $validated['delivered_time'] = now();
-            $delivery->order()->update(['order_status' => 'delivered', 'payment_status' => 'paid']);
+            $delivery->order()->update(['order_status' => 'completed', 'payment_status' => 'paid']);
             if ($delivery->driver_id) {
                 Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
+            }
+
+            // Notify Customer (In-App & FCM Push)
+            if ($order && $order->user_id) {
+                try {
+                    $notifTitle = "Order Delivered 🎉";
+                    $notifMessage = "Your order #{$order->order_number} has been delivered. Enjoy your meal!";
+
+                    Notification::create([
+                        'user_id' => $order->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => $notifTitle,
+                        'message' => $notifMessage,
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+
+                    $customerToken = $order->user?->fcm_token;
+                    if ($customerToken) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $customerToken,
+                            $notifTitle,
+                            $notifMessage,
+                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'delivered']
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Customer Delivered Notification Error: ' . $e->getMessage());
+                }
             }
         } elseif ($status === 'failed' && $delivery->driver_id) {
             Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);

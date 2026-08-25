@@ -180,6 +180,7 @@ Route::prefix('v1')->group(function () {
         // Shopping Cart, Orders & Payments
         Route::apiResource('carts', CartController::class)->except(['index', 'store','show']);
         Route::apiResource('cart-items', CartItemController::class)->except(['store', 'update', 'destroy']);
+        Route::post('orders/{order}/assign-driver', [OrderController::class, 'assignDriver']);
         Route::apiResource('orders', OrderController::class)->except(['store']);
         Route::apiResource('order-items', OrderItemController::class);
         Route::post('payments/{payment}/refund', [PaymentController::class, 'processRefund']);
@@ -296,6 +297,11 @@ Route::prefix('v1')->group(function () {
 
         // Delivery & Driver Fleet
         Route::middleware('role:super_admin,hq_admin,branch_admin,driver,admin,staff')->group(function () {
+            Route::get('drivers/upcoming-requests', [DriverController::class, 'upcomingRequests']);
+            Route::get('drivers/my-deliveries', [DriverController::class, 'myDeliveries']);
+            Route::post('drivers/orders/{order}/accept', [DriverController::class, 'acceptOrder']);
+            Route::post('drivers/orders/{order}/decline', [DriverController::class, 'declineOrder']);
+            Route::post('drivers/fcm-token', [DriverController::class, 'updateFcmToken']);
             Route::post('drivers/submit-kyc', [DriverController::class, 'submitKyc']);
             Route::put('drivers/{driver}/status', [DriverController::class, 'updateStatus']);
             Route::put('drivers/{driver}/kyc-status', [DriverController::class, 'updateKycStatus']);

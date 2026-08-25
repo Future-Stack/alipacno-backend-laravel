@@ -33,6 +33,7 @@ class User extends Authenticatable
         'loyalty_points_balance',
         'status',
         'terms_accepted',
+        'fcm_token',
     ];
 
     /**
