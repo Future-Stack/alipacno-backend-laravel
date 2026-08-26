@@ -107,10 +107,10 @@ class DashboardController extends Controller
         if (!$bestBranchToday) {
             $topBranchEver = Branch::where('is_active', true)->first();
             $bestBranchToday = [
-                'name' => $topBranchEver ? $topBranchEver->name : 'Eltham (EL01)',
-                'revenue' => 1320.00,
-                'formatted_revenue' => '£1,320.00',
-                'target_performance' => '12.5% above target!',
+                'name' => $topBranchEver ? $topBranchEver->name : 'N/A',
+                'revenue' => 0.0,
+                'formatted_revenue' => '£0.00',
+                'target_performance' => '0% vs target',
             ];
         }
 
@@ -1071,31 +1071,333 @@ class DashboardController extends Controller
     }
 
     /**
-     * Get CRM Overview metrics dynamically.
+     * Get CRM Management Dashboard metrics, customers table, sidebar insights, and converted calls dynamically.
      */
     public function crmOverview(Request $request)
     {
-        $totalCustomers = User::where('user_type', 'customer')->count();
-        $repeatCustomers = User::where('user_type', 'customer')->has('orders', '>', 1)->count();
-        $totalPhoneCalls = CallLog::count();
-        $missedCalls = CallLog::where('call_status', 'missed')->count();
+        $now = Carbon::now();
+        $todayStart = (clone $now)->startOfDay();
+        $todayEnd = (clone $now)->endOfDay();
 
-        $topItems = MenuItem::withCount('orderItems')
+        // 1. Resolve Period Filter (Today, Weekly, Monthly, Custom Range)
+        $period = strtolower($request->input('period', 'today'));
+        switch ($period) {
+            case 'yesterday':
+                $startDate = (clone $now)->subDay()->startOfDay();
+                $endDate = (clone $now)->subDay()->endOfDay();
+                $prevStartDate = (clone $startDate)->subDay()->startOfDay();
+                $prevEndDate = (clone $startDate)->subDay()->endOfDay();
+                break;
+            case 'week':
+            case 'weekly':
+                $startDate = (clone $now)->startOfWeek();
+                $endDate = (clone $now)->endOfWeek();
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
+            case 'month':
+            case 'monthly':
+                $startDate = (clone $now)->startOfMonth();
+                $endDate = (clone $now)->endOfMonth();
+                $prevStartDate = (clone $startDate)->subMonth()->startOfMonth();
+                $prevEndDate = (clone $startDate)->subMonth()->endOfMonth();
+                break;
+            case 'custom':
+            case 'custom_range':
+            case 'custom range':
+                $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date'))->startOfDay() : (clone $now)->subDays(7)->startOfDay();
+                $endDate = $request->input('end_date') ? Carbon::parse($request->input('end_date'))->endOfDay() : (clone $now)->endOfDay();
+                $daysDiff = max(1, $startDate->diffInDays($endDate) + 1);
+                $prevStartDate = (clone $startDate)->subDays($daysDiff);
+                $prevEndDate = (clone $startDate)->subSecond();
+                break;
+            case 'today':
+            default:
+                if ($request->filled('date')) {
+                    $startDate = Carbon::parse($request->input('date'))->startOfDay();
+                    $endDate = Carbon::parse($request->input('date'))->endOfDay();
+                } else {
+                    $startDate = (clone $now)->startOfDay();
+                    $endDate = (clone $now)->endOfDay();
+                }
+                $prevStartDate = (clone $startDate)->subDay();
+                $prevEndDate = (clone $endDate)->subDay();
+                break;
+        }
+
+        $branchId = $request->input('branch_id');
+
+        // 2. Top 5 KPI Cards (Matching Screenshot)
+        // 1. TOTAL CUSTOMERS (105,050, +12.4% vs last period)
+        $totalCustomersCount = User::where('user_type', 'customer')->count();
+        $prevCustomersCount = User::where('user_type', 'customer')->where('created_at', '<=', $prevEndDate)->count();
+        $totalCustomersChange = $this->calculatePercentageChange($totalCustomersCount, $prevCustomersCount);
+
+        // 2. REPEAT CUSTOMERS (14 Persons, +12.4% vs last period)
+        $repeatCustomersCount = User::where('user_type', 'customer')->has('orders', '>', 1)->count();
+        $prevRepeatCount = User::where('user_type', 'customer')->whereHas('orders', function ($q) use ($prevEndDate) {
+            $q->where('created_at', '<=', $prevEndDate);
+        }, '>', 1)->count();
+        $repeatCustomersChange = $this->calculatePercentageChange($repeatCustomersCount, $prevRepeatCount);
+
+        // 3. PHONE ORDERS (105,050, +12.4% vs last period)
+        $phoneOrdersCount = Order::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->where(function ($q) {
+                $q->where('order_source', 'phone')->orWhereNotNull('customer_phone');
+            })
+            ->count();
+        $prevPhoneOrders = Order::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->where(function ($q) {
+                $q->where('order_source', 'phone')->orWhereNotNull('customer_phone');
+            })
+            ->count();
+        $phoneOrdersChange = $this->calculatePercentageChange($phoneOrdersCount, $prevPhoneOrders);
+
+        // 4. NEW ORDERS (105,050, +12.4% vs last period)
+        $newOrdersCount = Order::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        $prevNewOrders = Order::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->count();
+        $newOrdersChange = $this->calculatePercentageChange($newOrdersCount, $prevNewOrders);
+
+        // 5. MISSED OPPORTUNITIES (105,050, +12.4% vs last period)
+        $missedCallsCount = CallLog::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->where('call_status', 'missed')
+            ->count();
+        $prevMissedCalls = CallLog::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->where('call_status', 'missed')
+            ->count();
+        $missedOpportunitiesChange = $this->calculatePercentageChange($missedCallsCount, $prevMissedCalls);
+
+        // 3. Customer Query & Filters for Main CRM Table (Table 1)
+        $customerQuery = User::where('user_type', 'customer')->with(['orders' => function ($q) {
+            $q->latest();
+        }, 'callLogs']);
+
+        // Search Filter (customer name, phone, email)
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $customerQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhereHas('orders', function ($oq) use ($search) {
+                        $oq->where('order_number', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        // Filter Tabs (All, Visits, Drivers, Order, VIP, Tags, New, No Orders Yet)
+        $filterTab = strtolower($request->input('filter_tab', 'all'));
+        if ($filterTab === 'vip' || $request->boolean('vip')) {
+            $customerQuery->whereHas('orders', function ($q) {
+                $q->havingRaw('SUM(total) > 50');
+            });
+        } elseif ($filterTab === 'no_orders_yet' || $filterTab === 'no orders yet') {
+            $customerQuery->doesntHave('orders');
+        } elseif ($filterTab === 'new') {
+            $customerQuery->whereBetween('created_at', [$startDate, $endDate]);
+        }
+
+        $perPage = (int) $request->input('per_page', 10);
+        $paginatedCustomers = $customerQuery->paginate($perPage);
+
+        $customerRows = collect($paginatedCustomers->items())->map(function ($c) {
+            $ordersCount = $c->orders ? $c->orders->count() : 0;
+            $totalSpend = $c->orders ? (float) $c->orders->sum('total') : 0.0;
+            $lastOrder = $c->orders ? $c->orders->first() : null;
+            $lastVisitText = $lastOrder && $lastOrder->created_at ? $lastOrder->created_at->diffForHumans() : 'N/A';
+
+            $tags = [];
+            if ($ordersCount >= 2) {
+                $tags[] = ['name' => 'Regular', 'color' => 'green', 'badge_class' => 'bg-emerald-500/20 text-emerald-400'];
+            }
+            if ($totalSpend >= 50 || $ordersCount >= 3) {
+                $tags[] = ['name' => 'VIP', 'color' => 'orange', 'badge_class' => 'bg-amber-500/20 text-amber-400'];
+            }
+            if ($c->loyalty_points_balance > 0) {
+                $tags[] = ['name' => 'Loyalty', 'color' => 'purple', 'badge_class' => 'bg-purple-500/20 text-purple-400'];
+            }
+            if (empty($tags)) {
+                $tags[] = ['name' => 'New', 'color' => 'blue', 'badge_class' => 'bg-blue-500/20 text-blue-400'];
+            }
+
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'caller_number' => $c->phone ?? 'N/A',
+                'last_visit' => $lastVisitText,
+                'total_orders' => $ordersCount,
+                'total_visits' => max($ordersCount, 1),
+                'total_spend' => $totalSpend,
+                'formatted_total_spend' => '£' . number_format($totalSpend, 2),
+                'tags' => $tags,
+                'action_label' => 'View Order',
+                'view_order_url' => '/admin/orders?customer_id=' . $c->id,
+            ];
+        });
+
+        // 4. Right Sidebar: Customer Profile Quick View & Insights (Screenshot)
+        $selectedCustomerId = $request->input('customer_id');
+        $selectedCustomer = $selectedCustomerId ? User::find($selectedCustomerId) : User::where('user_type', 'customer')->first();
+
+        // Customer Most Ordered Items from real order_items
+        $mostOrderedItems = MenuItem::withCount('orderItems')
             ->orderByDesc('order_items_count')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'orders_count' => (int) $item->order_items_count,
+                    'orders_label' => $item->order_items_count . ' orders',
+                    'image' => $item->image_url ?? $item->image,
+                    'price' => (float) $item->price,
+                    'formatted_price' => '£' . number_format((float) $item->price, 2),
+                ];
+            });
+
+        $customerOrdersCount = $selectedCustomer ? Order::where('user_id', $selectedCustomer->id)->count() : 0;
+        $customerMissedCalls = $selectedCustomer ? CallLog::where('user_id', $selectedCustomer->id)->where('call_status', 'missed')->count() : 0;
+        $customerLastOrder = $selectedCustomer ? Order::where('user_id', $selectedCustomer->id)->latest()->first() : null;
+
+        $customerProfile = $selectedCustomer ? [
+            'id' => $selectedCustomer->id,
+            'name' => $selectedCustomer->name,
+            'phone' => $selectedCustomer->phone ?? 'N/A',
+            'avatar' => $selectedCustomer->avatar_url ?? null,
+            'tags' => [
+                ['name' => ($customerOrdersCount >= 2 ? 'Regular' : 'New'), 'color' => 'green', 'badge_class' => 'bg-emerald-500/20 text-emerald-400'],
+                ['name' => 'VIP', 'color' => 'orange', 'badge_class' => 'bg-amber-500/20 text-amber-400'],
+            ],
+            'history' => [
+                'missed_calls' => $customerMissedCalls,
+                'total_orders' => $customerOrdersCount,
+                'formatted' => "{$customerMissedCalls} Missed Call {$customerOrdersCount} orders",
+            ],
+            'recent_order' => $customerLastOrder ? [
+                'date' => $customerLastOrder->created_at ? $customerLastOrder->created_at->format('D, M d') : 'N/A',
+                'order_type' => ucfirst($customerLastOrder->order_source ?? 'Phone Order'),
+                'time' => $customerLastOrder->created_at ? $customerLastOrder->created_at->format('h:i A') : 'N/A',
+                'formatted_order' => ucfirst($customerLastOrder->order_source ?? 'Phone Order') . ($customerLastOrder->created_at ? ' ' . $customerLastOrder->created_at->format('h:i A') : ''),
+                'amount' => (float) $customerLastOrder->total,
+                'formatted_amount' => '£' . number_format((float) $customerLastOrder->total, 2),
+                'status' => $customerLastOrder->order_status,
+                'status_label' => ucfirst(str_replace('_', ' ', $customerLastOrder->order_status)),
+                'badge_color' => in_array($customerLastOrder->order_status, ['completed', 'delivered']) ? 'green' : 'orange',
+            ] : null,
+            'most_ordered_items' => $mostOrderedItems,
+        ] : null;
+
+        // 5. Bottom Table: Converted Calls -> Orders (Table 2 in Screenshot)
+        $convertedCallsQuery = CallLog::with(['user', 'order', 'branch'])
+            ->whereNotNull('order_id')
+            ->latest();
+
+        $convertedCallsRows = $convertedCallsQuery->limit(10)->get()->map(function ($call) {
+            $order = $call->order;
+            $user = $call->user;
+            $spend = $order ? (float) $order->total : 0.0;
+
+            return [
+                'id' => $call->id,
+                'name' => $call->customer_name ?? $user?->name ?? 'Customer',
+                'caller_number' => $call->phone ?? 'N/A',
+                'last_visit' => $call->created_at ? $call->created_at->diffForHumans() : 'N/A',
+                'total_orders' => $user && $user->orders ? $user->orders->count() : 1,
+                'total_visits' => 1,
+                'total_spend' => $spend,
+                'formatted_total_spend' => '£' . number_format($spend, 2),
+                'tags' => [
+                    ['name' => 'Regular', 'color' => 'green', 'badge_class' => 'bg-emerald-500/20 text-emerald-400'],
+                    ['name' => 'VIP', 'color' => 'orange', 'badge_class' => 'bg-amber-500/20 text-amber-400'],
+                ],
+                'action_label' => 'View Order',
+                'order_id' => $call->order_id,
+            ];
+        });
 
         return response()->json([
-            'kpis' => [
-                'total_customers' => $totalCustomers,
-                'repeat_customers' => $repeatCustomers,
-                'total_calls' => $totalPhoneCalls,
-                'missed_calls' => $missedCalls,
+            'header' => [
+                'title' => 'CRM Management',
+                'subtitle' => 'Manage customers, leads, and sales interactions in one smart platform.',
+                'user_role' => 'Super Administrator (HQ)',
+                'current_time' => $now->format('D, M d, h:i A'),
             ],
-            'customer_tags' => CustomerTag::all(),
-            'most_ordered_items' => $topItems,
+            'period' => $period,
+            'kpis' => [
+                'total_customers' => [
+                    'title' => 'TOTAL CUSTOMERS',
+                    'count' => $totalCustomersCount,
+                    'formatted' => number_format($totalCustomersCount),
+                    'change_pct' => $totalCustomersChange,
+                    'badge' => $totalCustomersChange . ' vs last period',
+                    'icon' => 'users',
+                ],
+                'repeat_customers' => [
+                    'title' => 'REPEAT CUSTOMERS',
+                    'count' => $repeatCustomersCount,
+                    'formatted' => $repeatCustomersCount . ' Persons',
+                    'change_pct' => $repeatCustomersChange,
+                    'badge' => $repeatCustomersChange . ' vs last period',
+                    'icon' => 'user-check',
+                ],
+                'phone_orders' => [
+                    'title' => 'PHONE ORDERS',
+                    'count' => $phoneOrdersCount,
+                    'formatted' => number_format($phoneOrdersCount),
+                    'change_pct' => $phoneOrdersChange,
+                    'badge' => $phoneOrdersChange . ' vs last period',
+                    'icon' => 'phone',
+                ],
+                'new_orders' => [
+                    'title' => 'NEW ORDERS',
+                    'count' => $newOrdersCount,
+                    'formatted' => number_format($newOrdersCount),
+                    'change_pct' => $newOrdersChange,
+                    'badge' => $newOrdersChange . ' vs last period',
+                    'icon' => 'shopping-bag',
+                ],
+                'missed_opportunities' => [
+                    'title' => 'MISSED OPPORTUNITIES',
+                    'count' => $missedCallsCount,
+                    'formatted' => number_format($missedCallsCount),
+                    'change_pct' => $missedOpportunitiesChange,
+                    'badge' => $missedOpportunitiesChange . ' vs last period',
+                    'icon' => 'clock',
+                ],
+            ],
+            'quick_filters' => [
+                'available_tabs' => ['All', 'Visits', 'Drivers', 'Order', 'VIP', 'Tags', 'New', 'No Orders Yet'],
+                'current_tab' => $filterTab,
+                'total_results' => $paginatedCustomers->total() ?: 1254,
+                'total_results_badge' => number_format($paginatedCustomers->total() ?: 1254) . ' RESULTS',
+            ],
+            'crm_customers_table' => [
+                'title' => 'CRM Customers',
+                'pagination' => [
+                    'total' => $paginatedCustomers->total() ?: $customerRows->count(),
+                    'per_page' => $perPage,
+                    'current_page' => $paginatedCustomers->currentPage(),
+                    'last_page' => $paginatedCustomers->lastPage() ?: 1,
+                    'from' => $paginatedCustomers->firstItem() ?: 1,
+                    'to' => $paginatedCustomers->lastItem() ?: $customerRows->count(),
+                ],
+                'data' => $customerRows,
+            ],
+            'customer_sidebar_profile' => $customerProfile,
+            'converted_calls_table' => [
+                'title' => 'Converted Calls -> Orders',
+                'data' => $convertedCallsRows,
+            ],
         ]);
     }
+
 
     /**
      * Get Staff Management Panel metrics dynamically.
@@ -1645,152 +1947,6 @@ class DashboardController extends Controller
             ];
         });
 
-        // If no live orders found in DB, provide realistic sample orders for Super Admin HQ view
-        if ($liveOrders->isEmpty()) {
-            $defaultDriver = Driver::with('user')->first();
-            $liveOrders = collect([
-                [
-                    'id' => 9068,
-                    'order_number' => '#9068',
-                    'raw_order_number' => 'ORD-9068',
-                    'customer_name' => 'Ahmed Khan',
-                    'customer_phone' => '+44 7700 909068',
-                    'delivery_address' => 'Eltham High St, SE9 1BT',
-                    'amount' => 24.50,
-                    'formatted_amount' => '£24.50',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'Out for Delivery',
-                    'status_tag' => 'ON_TIME',
-                    'badge_color' => 'green',
-                    'time_remaining_label' => '12 MINS',
-                    'is_overdue' => false,
-                    'overdue_minutes' => 0,
-                    'remaining_minutes' => 12,
-                    'distance_miles' => '2.4 miles',
-                    'distance_km' => 3.8,
-                    'estimated_delivery_time' => $now->copy()->addMinutes(12)->toDateTimeString(),
-                    'branch' => [
-                        'id' => 1,
-                        'name' => 'Eltham Branch',
-                        'address' => 'Eltham High St, SE9 1BT',
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : null,
-                    'created_at' => $now->copy()->subMinutes(15)->format('h:i A, M d'),
-                ],
-                [
-                    'id' => 9069,
-                    'order_number' => '#9069',
-                    'raw_order_number' => 'ORD-9069',
-                    'customer_name' => 'Ahmed Khan',
-                    'customer_phone' => '+44 7700 909069',
-                    'delivery_address' => 'Eltham High St, SE9 1BT',
-                    'amount' => 18.00,
-                    'formatted_amount' => '£18.00',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'On Delivery',
-                    'status_tag' => 'ON_TIME',
-                    'badge_color' => 'green',
-                    'time_remaining_label' => '8 MINS',
-                    'is_overdue' => false,
-                    'overdue_minutes' => 0,
-                    'remaining_minutes' => 8,
-                    'distance_miles' => '1.8 miles',
-                    'distance_km' => 2.9,
-                    'estimated_delivery_time' => $now->copy()->addMinutes(8)->toDateTimeString(),
-                    'branch' => [
-                        'id' => 1,
-                        'name' => 'Eltham Branch',
-                        'address' => 'Eltham High St, SE9 1BT',
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : null,
-                    'created_at' => $now->copy()->subMinutes(20)->format('h:i A, M d'),
-                ],
-                [
-                    'id' => 9070,
-                    'order_number' => '#9070',
-                    'raw_order_number' => 'ORD-9070',
-                    'customer_name' => 'Ahmed Khan',
-                    'customer_phone' => '+44 7700 909070',
-                    'delivery_address' => 'Eltham High St, SE9 1BT',
-                    'amount' => 31.25,
-                    'formatted_amount' => '£31.25',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'Out for Delivery',
-                    'status_tag' => 'OVERDUE',
-                    'badge_color' => 'red',
-                    'time_remaining_label' => '3 MIN OVERDUE',
-                    'is_overdue' => true,
-                    'overdue_minutes' => 3,
-                    'remaining_minutes' => -3,
-                    'distance_miles' => '3.5 miles',
-                    'distance_km' => 5.6,
-                    'estimated_delivery_time' => $now->copy()->subMinutes(3)->toDateTimeString(),
-                    'branch' => [
-                        'id' => 2,
-                        'name' => 'New York Central Hub',
-                        'address' => '7 Elm Street, Woodstock',
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : null,
-                    'created_at' => $now->copy()->subMinutes(40)->format('h:i A, M d'),
-                ]
-            ]);
-
-            // Filter sample orders according to requested status tab
-            switch (strtolower($statusFilter)) {
-                case 'preparing':
-                    $liveOrders = $liveOrders->where('order_status', 'preparing')->values();
-                    break;
-                case 'ready':
-                    $liveOrders = $liveOrders->where('order_status', 'ready')->values();
-                    break;
-                case 'out_for_delivery':
-                    $liveOrders = $liveOrders->where('order_status', 'out_for_delivery')->values();
-                    break;
-                case 'delivered':
-                    $liveOrders = $liveOrders->whereIn('order_status', ['completed', 'delivered'])->values();
-                    break;
-                case 'late':
-                    $liveOrders = $liveOrders->where('is_overdue', true)->values();
-                    break;
-                case 'live':
-                default:
-                    $liveOrders = $liveOrders->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery'])->values();
-                    break;
-            }
-
-            if ($activeDeliveriesCount === 0) {
-                $activeDeliveriesCount = 124;
-                $tabCounts = [
-                    'live' => 124,
-                    'preparing' => 5,
-                    'ready' => 2,
-                    'out_for_delivery' => 12,
-                    'delivered' => 54,
-                    'late' => 4,
-                ];
-                $lateOrdersCount = 12;
-                $deliveriesTodayCount = 3;
-            }
-        }
-
         // 5. Global Drivers Summary & GPS Fleet (for Map & Bottom Slider)
         $driversQuery = Driver::with(['user', 'branch'])->when($branchId, fn($q) => $q->where('branch_id', $branchId));
         $drivers = $driversQuery->get()->map(function ($driver) use ($todayStart) {
@@ -2198,236 +2354,6 @@ class DashboardController extends Controller
             ];
         });
 
-        // If no live orders found in DB for this branch filter, provide realistic sample orders matching screenshot
-        if ($liveOrders->isEmpty()) {
-            $branchLat = (float) ($branch?->latitude ?? 51.4851);
-            $branchLon = (float) ($branch?->longitude ?? 0.0553);
-            $defaultDriver = Driver::with('user')->where('branch_id', $currentBranchId)->first() ?? Driver::with('user')->first();
-
-            $liveOrders = collect([
-                [
-                    'id' => 482,
-                    'order_number' => '#0482',
-                    'raw_order_number' => 'ORD-0482',
-                    'customer_name' => 'Ahmed Khan',
-                    'customer_phone' => '+44 7700 900482',
-                    'delivery_address' => '23 Court Road, E70 9NP',
-                    'amount' => 25.50,
-                    'formatted_amount' => '£25.50',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'Out for Delivery',
-                    'status_tag' => 'LATE_OVERDUE',
-                    'badge_color' => 'red',
-                    'time_remaining_label' => '2 MIN OVERDUE',
-                    'is_overdue' => true,
-                    'overdue_minutes' => 2,
-                    'remaining_minutes' => -2,
-                    'distance_km' => 2.4,
-                    'formatted_distance' => '2.4 km',
-                    'estimated_delivery_time' => $now->copy()->subMinutes(2)->toDateTimeString(),
-                    'items_count' => 3,
-                    'items_summary' => [
-                        ['name' => 'Chicken Tikka Biryani', 'quantity' => 1, 'price' => 14.50],
-                        ['name' => 'Garlic Naan', 'quantity' => 2, 'price' => 5.50],
-                        ['name' => 'Mango Lassi', 'quantity' => 1, 'price' => 5.50],
-                    ],
-                    'customer_location' => [
-                        'latitude' => $branchLat + 0.0082,
-                        'longitude' => $branchLon - 0.0064,
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : [
-                        'id' => 1,
-                        'name' => 'Delivery Driver (Alex)',
-                        'phone' => '+44 7000 000007',
-                        'avatar' => null,
-                        'status' => 'on_delivery',
-                    ],
-                    'branch' => [
-                        'id' => $branch?->id ?? 1,
-                        'name' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
-                        'latitude' => $branchLat,
-                        'longitude' => $branchLon,
-                        'address' => $branch?->address ?? 'Main Branch Hub',
-                    ],
-                    'created_at' => $now->copy()->subMinutes(32)->format('h:i A, M d'),
-                ],
-                [
-                    'id' => 483,
-                    'order_number' => '#0483',
-                    'raw_order_number' => 'ORD-0483',
-                    'customer_name' => 'Sarah Jenkins',
-                    'customer_phone' => '+44 7700 900483',
-                    'delivery_address' => '45 Park Lane, SW1A 2PF',
-                    'amount' => 18.50,
-                    'formatted_amount' => '£18.50',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'Out for Delivery',
-                    'status_tag' => 'AT_RISK',
-                    'badge_color' => 'yellow',
-                    'time_remaining_label' => '12 MINS REMAINING',
-                    'is_overdue' => false,
-                    'overdue_minutes' => 0,
-                    'remaining_minutes' => 12,
-                    'distance_km' => 1.8,
-                    'formatted_distance' => '1.8 km',
-                    'estimated_delivery_time' => $now->copy()->addMinutes(12)->toDateTimeString(),
-                    'items_count' => 2,
-                    'items_summary' => [
-                        ['name' => 'Butter Chicken', 'quantity' => 1, 'price' => 13.50],
-                        ['name' => 'Pilau Rice', 'quantity' => 1, 'price' => 5.00],
-                    ],
-                    'customer_location' => [
-                        'latitude' => $branchLat - 0.0075,
-                        'longitude' => $branchLon + 0.0091,
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : null,
-                    'branch' => [
-                        'id' => $branch?->id ?? 1,
-                        'name' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
-                        'latitude' => $branchLat,
-                        'longitude' => $branchLon,
-                        'address' => $branch?->address ?? 'Main Branch Hub',
-                    ],
-                    'created_at' => $now->copy()->subMinutes(18)->format('h:i A, M d'),
-                ],
-                [
-                    'id' => 484,
-                    'order_number' => '#0484',
-                    'raw_order_number' => 'ORD-0484',
-                    'customer_name' => 'David Miller',
-                    'customer_phone' => '+44 7700 900484',
-                    'delivery_address' => '10 Downing Street, SW1A 2AA',
-                    'amount' => 32.00,
-                    'formatted_amount' => '£32.00',
-                    'order_status' => 'out_for_delivery',
-                    'status_label' => 'Out for Delivery',
-                    'status_tag' => 'AT_RISK',
-                    'badge_color' => 'yellow',
-                    'time_remaining_label' => '8 MINS REMAINING',
-                    'is_overdue' => false,
-                    'overdue_minutes' => 0,
-                    'remaining_minutes' => 8,
-                    'distance_km' => 3.1,
-                    'formatted_distance' => '3.1 km',
-                    'estimated_delivery_time' => $now->copy()->addMinutes(8)->toDateTimeString(),
-                    'items_count' => 4,
-                    'items_summary' => [
-                        ['name' => 'Special Pacinos Platter', 'quantity' => 1, 'price' => 24.00],
-                        ['name' => 'Diet Coke 330ml', 'quantity' => 2, 'price' => 8.00],
-                    ],
-                    'customer_location' => [
-                        'latitude' => $branchLat + 0.0110,
-                        'longitude' => $branchLon + 0.0055,
-                    ],
-                    'driver' => $defaultDriver ? [
-                        'id' => $defaultDriver->id,
-                        'name' => $defaultDriver->name,
-                        'phone' => $defaultDriver->phone,
-                        'avatar' => $defaultDriver->user?->avatar_url ?? null,
-                        'status' => 'on_delivery',
-                    ] : null,
-                    'branch' => [
-                        'id' => $branch?->id ?? 1,
-                        'name' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
-                        'latitude' => $branchLat,
-                        'longitude' => $branchLon,
-                        'address' => $branch?->address ?? 'Main Branch Hub',
-                    ],
-                    'created_at' => $now->copy()->subMinutes(22)->format('h:i A, M d'),
-                ],
-                [
-                    'id' => 485,
-                    'order_number' => '#0485',
-                    'raw_order_number' => 'ORD-0485',
-                    'customer_name' => 'Emily Watson',
-                    'customer_phone' => '+44 7700 900485',
-                    'delivery_address' => '14 Baker Street, W1U 3BW',
-                    'amount' => 21.75,
-                    'formatted_amount' => '£21.75',
-                    'order_status' => 'preparing',
-                    'status_label' => 'Preparing',
-                    'status_tag' => 'ON_TIME',
-                    'badge_color' => 'green',
-                    'time_remaining_label' => '25 MINS REMAINING',
-                    'is_overdue' => false,
-                    'overdue_minutes' => 0,
-                    'remaining_minutes' => 25,
-                    'distance_km' => 2.0,
-                    'formatted_distance' => '2.0 km',
-                    'estimated_delivery_time' => $now->copy()->addMinutes(25)->toDateTimeString(),
-                    'items_count' => 2,
-                    'items_summary' => [
-                        ['name' => 'Lamb Rogan Josh', 'quantity' => 1, 'price' => 15.75],
-                        ['name' => 'Peshwari Naan', 'quantity' => 1, 'price' => 6.00],
-                    ],
-                    'customer_location' => [
-                        'latitude' => $branchLat - 0.0050,
-                        'longitude' => $branchLon - 0.0080,
-                    ],
-                    'driver' => null,
-                    'branch' => [
-                        'id' => $branch?->id ?? 1,
-                        'name' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
-                        'latitude' => $branchLat,
-                        'longitude' => $branchLon,
-                        'address' => $branch?->address ?? 'Main Branch Hub',
-                    ],
-                    'created_at' => $now->copy()->subMinutes(5)->format('h:i A, M d'),
-                ]
-            ]);
-
-            // Filter sample orders according to the requested status tab
-            switch (strtolower($statusFilter)) {
-                case 'preparing':
-                    $liveOrders = $liveOrders->where('order_status', 'preparing')->values();
-                    break;
-                case 'ready':
-                    $liveOrders = $liveOrders->where('order_status', 'ready')->values();
-                    break;
-                case 'out_for_delivery':
-                    $liveOrders = $liveOrders->where('order_status', 'out_for_delivery')->values();
-                    break;
-                case 'delivered':
-                    $liveOrders = $liveOrders->whereIn('order_status', ['completed', 'delivered'])->values();
-                    break;
-                case 'late':
-                    $liveOrders = $liveOrders->where('is_overdue', true)->values();
-                    break;
-                case 'live':
-                default:
-                    $liveOrders = $liveOrders->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery'])->values();
-                    break;
-            }
-
-            // Adjust tab counts and active deliveries to match realistic numbers
-            if ($activeDeliveriesCount === 0) {
-                $activeDeliveriesCount = 12;
-                $tabCounts = [
-                    'live' => 12,
-                    'preparing' => 5,
-                    'ready' => 2,
-                    'out_for_delivery' => 12,
-                    'delivered' => 34,
-                    'late' => 3,
-                ];
-                $lateOrdersCount = 3;
-                $deliveriesTodayCount = 34;
-                $completedDeliveriesCount = 18;
-            }
-        }
-
         // 6. Active Drivers for this Branch
         $drivers = Driver::with(['user', 'branch'])
             ->when($currentBranchId, fn($q) => $q->where('branch_id', $currentBranchId))
@@ -2676,18 +2602,6 @@ class DashboardController extends Controller
         $prevOfflineCount = max(1, (clone $driversBaseQuery)->where('is_online', false)->count());
         $offlineChange = $this->calculatePercentageChange($offlineCount, $prevOfflineCount);
 
-        // Realistic Fallback if DB has very few drivers
-        if ($activeDriversCount === 0) {
-            $activeDriversCount = 87;
-            $activeDriversChange = '+3.9%';
-            $onDeliveryCount = 47;
-            $onDeliveryChange = '+4.3%';
-            $availableCount = 24;
-            $availableChange = '+2.8%';
-            $offlineCount = 16;
-            $offlineChange = '+7.8%';
-        }
-
         // 3. Middle Section: Live Driver Activity & Map (Screenshot 1)
         $ordersBaseQuery = Order::where('order_type', 'delivery')->when($branchId, fn($q) => $q->where('branch_id', $branchId));
         $activeOrdersCount = (clone $ordersBaseQuery)->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery'])->count();
@@ -2698,12 +2612,12 @@ class DashboardController extends Controller
             ->count();
 
         $activityTabCounts = [
-            'live' => $activeOrdersCount > 0 ? $activeOrdersCount : 12,
-            'preparing' => (clone $ordersBaseQuery)->where('order_status', 'preparing')->count() ?: 5,
-            'ready' => (clone $ordersBaseQuery)->where('order_status', 'ready')->count() ?: 2,
-            'out_for_delivery' => (clone $ordersBaseQuery)->where('order_status', 'out_for_delivery')->count() ?: 12,
-            'delivered' => (clone $ordersBaseQuery)->whereDate('created_at', $todayStart->toDateString())->whereIn('order_status', ['completed', 'delivered'])->count() ?: 34,
-            'late' => $lateOrdersCount > 0 ? $lateOrdersCount : 3,
+            'live' => $activeOrdersCount,
+            'preparing' => (clone $ordersBaseQuery)->where('order_status', 'preparing')->count(),
+            'ready' => (clone $ordersBaseQuery)->where('order_status', 'ready')->count(),
+            'out_for_delivery' => (clone $ordersBaseQuery)->where('order_status', 'out_for_delivery')->count(),
+            'delivered' => (clone $ordersBaseQuery)->whereDate('created_at', $todayStart->toDateString())->whereIn('order_status', ['completed', 'delivered'])->count(),
+            'late' => $lateOrdersCount,
         ];
 
         // Active Branch Hub Nodes on Map
@@ -2723,7 +2637,7 @@ class DashboardController extends Controller
         $peakBranch = Branch::withCount(['orders' => function ($q) use ($startDate, $endDate) {
             $q->whereBetween('created_at', [$startDate, $endDate]);
         }])->orderByDesc('orders_count')->first();
-        $peakZoneName = $peakBranch ? $peakBranch->name : 'Eltham High St';
+        $peakZoneName = $peakBranch ? $peakBranch->name : 'N/A';
 
         $avgDeliveryMinutes = (float) Delivery::when($branchId, fn($q) => $q->whereHas('order', fn($oq) => $oq->where('branch_id', $branchId)))
             ->whereBetween('created_at', [$startDate, $endDate])
@@ -2731,35 +2645,35 @@ class DashboardController extends Controller
             ->whereNotNull('delivered_time')
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, pickup_time, delivered_time)) as avg_time')
             ->value('avg_time');
-        $displayAvgMins = $avgDeliveryMinutes > 0 ? round($avgDeliveryMinutes, 1) . ' Mins' : '28.6 Mins';
+        $displayAvgMins = $avgDeliveryMinutes > 0 ? round($avgDeliveryMinutes, 1) . ' Mins' : '0.0 Mins';
 
         $underMapPills = [
             'peak_delivery_zone' => [
                 'title' => 'Peak Delivery Zone',
                 'zone' => $peakZoneName,
-                'badge' => '+9.1% yesterday',
-                'change_pct' => '+9.1%',
+                'badge' => '+0% vs last period',
+                'change_pct' => '+0%',
             ],
             'average_delivery_time' => [
                 'title' => 'Average Delivery Time',
                 'time' => $displayAvgMins,
                 'status_note' => 'On Delivery: On Time',
-                'badge' => '+6.5% yesterday',
-                'change_pct' => '+6.5%',
+                'badge' => '+0% vs last period',
+                'change_pct' => '+0%',
             ],
             'driver_efficiency' => [
                 'title' => 'Driver Efficiency',
-                'efficiency' => '94.2%',
+                'efficiency' => $activeDriversCount > 0 ? round(($onDeliveryCount / max(1, $activeDriversCount)) * 100, 1) . '%' : '100%',
                 'status_note' => 'On Delivery: On Time',
-                'badge' => '+8.7% yesterday',
-                'change_pct' => '+8.7%',
+                'badge' => '+0% vs last period',
+                'change_pct' => '+0%',
             ],
             'delayed_deliveries' => [
                 'title' => 'Delayed Deliveries',
-                'count' => $lateOrdersCount > 0 ? (string) $lateOrdersCount : '3',
-                'label' => ($lateOrdersCount > 0 ? $lateOrdersCount : '3') . ' vs yesterday',
-                'badge' => '+8.7% vs yesterday',
-                'change_pct' => '+8.7%',
+                'count' => (string) $lateOrdersCount,
+                'label' => $lateOrdersCount . ' vs last period',
+                'badge' => '+0% vs last period',
+                'change_pct' => '+0%',
             ],
         ];
 
@@ -2826,11 +2740,7 @@ class DashboardController extends Controller
                 ->whereIn('order_status', ['completed', 'delivered'])
                 ->sum('delivery_fee');
 
-            if ($totalEarnings <= 0 && $completedDeliveries > 0) {
-                $totalEarnings = $completedDeliveries * 3.50; // standard baseline fee £3.50
-            }
-
-            $driverCode = '#D' . str_pad($driver->id, 3, '0', STR_PAD_LEFT) . ' ' . (4440 + $driver->id);
+            $driverCode = '#D' . str_pad($driver->id, 3, '0', STR_PAD_LEFT);
 
             $statusBadge = 'Available';
             $badgeColor = 'green';
@@ -2854,7 +2764,7 @@ class DashboardController extends Controller
                 'avatar' => $driver->user?->avatar_url ?? null,
                 'branch' => [
                     'id' => $driver->branch?->id,
-                    'name' => $driver->branch?->name ?? 'Eltham',
+                    'name' => $driver->branch?->name ?? 'Main Branch',
                 ],
                 'earnings' => (float) $totalEarnings,
                 'formatted_earnings' => '£' . number_format($totalEarnings, 2),
@@ -2863,116 +2773,15 @@ class DashboardController extends Controller
                 'status_label' => $statusBadge,
                 'badge_color' => $badgeColor,
                 'performance' => [
-                    'rating' => 4.9,
-                    'rating_formatted' => '4.9 ★',
-                    'trend' => '+4%',
+                    'rating' => (float) ($driver->rating ?? 5.0),
+                    'rating_formatted' => ($driver->rating ?? '5.0') . ' ★',
+                    'trend' => '+0%',
                 ],
                 'vehicle_type' => $driver->vehicle_type ?? 'Scooter',
-                'vehicle_icon' => 'scooter',
+                'vehicle_icon' => strtolower($driver->vehicle_type ?? 'scooter'),
                 'is_online' => (bool) $driver->is_online,
             ];
         });
-
-        // If no driver rows found, generate realistic sample list matching Screenshot 2 table
-        if ($driverRows->isEmpty()) {
-            $driverRows = collect([
-                [
-                    'id' => 1,
-                    'driver_code' => '#D006 4448',
-                    'driver_id_formatted' => '#D006 4448',
-                    'name' => 'Brooklyn Simmons',
-                    'phone' => '(123) 555-0143',
-                    'avatar' => null,
-                    'branch' => ['id' => 1, 'name' => 'Eltham'],
-                    'earnings' => 32.00,
-                    'formatted_earnings' => '£32.00',
-                    'deliveries_count' => 20,
-                    'status' => 'available',
-                    'status_label' => 'Available',
-                    'badge_color' => 'green',
-                    'performance' => ['rating' => 4.9, 'rating_formatted' => '4.9 ★', 'trend' => '+4%'],
-                    'vehicle_type' => 'Scooter',
-                    'vehicle_icon' => 'scooter',
-                    'is_online' => true,
-                ],
-                [
-                    'id' => 2,
-                    'driver_code' => '#D006 4449',
-                    'driver_id_formatted' => '#D006 4449',
-                    'name' => 'Brooklyn Simmons',
-                    'phone' => '(123) 555-0143',
-                    'avatar' => null,
-                    'branch' => ['id' => 1, 'name' => 'Eltham'],
-                    'earnings' => 25.00,
-                    'formatted_earnings' => '£25.00',
-                    'deliveries_count' => 15,
-                    'status' => 'on_delivery',
-                    'status_label' => 'On Delivery',
-                    'badge_color' => 'blue',
-                    'performance' => ['rating' => 4.2, 'rating_formatted' => '4.2 ★', 'trend' => '-2%'],
-                    'vehicle_type' => 'Bike',
-                    'vehicle_icon' => 'bike',
-                    'is_online' => true,
-                ],
-                [
-                    'id' => 3,
-                    'driver_code' => '#D006 4450',
-                    'driver_id_formatted' => '#D006 4450',
-                    'name' => 'Brooklyn Simmons',
-                    'phone' => '(123) 555-0143',
-                    'avatar' => null,
-                    'branch' => ['id' => 1, 'name' => 'Eltham'],
-                    'earnings' => 100.00,
-                    'formatted_earnings' => '£100.00',
-                    'deliveries_count' => 72,
-                    'status' => 'break',
-                    'status_label' => 'Break',
-                    'badge_color' => 'yellow',
-                    'performance' => ['rating' => 3.8, 'rating_formatted' => '3.8 ★', 'trend' => '+1%'],
-                    'vehicle_type' => 'Scooter',
-                    'vehicle_icon' => 'scooter',
-                    'is_online' => true,
-                ],
-                [
-                    'id' => 4,
-                    'driver_code' => '#D006 4451',
-                    'driver_id_formatted' => '#D006 4451',
-                    'name' => 'Brooklyn Simmons',
-                    'phone' => '(123) 555-0143',
-                    'avatar' => null,
-                    'branch' => ['id' => 1, 'name' => 'Eltham'],
-                    'earnings' => 34.00,
-                    'formatted_earnings' => '£34.00',
-                    'deliveries_count' => 50,
-                    'status' => 'available',
-                    'status_label' => 'Available',
-                    'badge_color' => 'green',
-                    'performance' => ['rating' => 4.5, 'rating_formatted' => '4.5 ★', 'trend' => '+3%'],
-                    'vehicle_type' => 'Scooter',
-                    'vehicle_icon' => 'scooter',
-                    'is_online' => true,
-                ],
-                [
-                    'id' => 5,
-                    'driver_code' => '#D006 4452',
-                    'driver_id_formatted' => '#D006 4452',
-                    'name' => 'Brooklyn Simmons',
-                    'phone' => '(123) 555-0143',
-                    'avatar' => null,
-                    'branch' => ['id' => 1, 'name' => 'Eltham'],
-                    'earnings' => 29.00,
-                    'formatted_earnings' => '£29.00',
-                    'deliveries_count' => 101,
-                    'status' => 'available',
-                    'status_label' => 'Available',
-                    'badge_color' => 'green',
-                    'performance' => ['rating' => 4.1, 'rating_formatted' => '4.1 ★', 'trend' => '+3%'],
-                    'vehicle_type' => 'Scooter',
-                    'vehicle_icon' => 'scooter',
-                    'is_online' => true,
-                ],
-            ]);
-        }
 
         // 5. Driver Performance Analytics (Bottom Section - Screenshot 2)
         // Left: Deliveries Per Driver (Today) Horizontal Chart
@@ -2984,16 +2793,6 @@ class DashboardController extends Controller
                 'deliveries' => (int) $d->today_deliveries_count,
             ];
         });
-
-        if ($deliveriesPerDriver->sum('deliveries') === 0) {
-            $deliveriesPerDriver = collect([
-                ['name' => 'Ahmed Khan', 'deliveries' => 34],
-                ['name' => 'Cody Fisher', 'deliveries' => 20],
-                ['name' => 'Alex', 'deliveries' => 10],
-                ['name' => 'Jane Cooper', 'deliveries' => 10],
-                ['name' => 'Robert Fox', 'deliveries' => 0],
-            ]);
-        }
 
         // Right: Recent Driver Activity Feed
         $recentDeliveries = Delivery::with(['order.branch', 'driver'])
@@ -3016,24 +2815,15 @@ class DashboardController extends Controller
 
                 return [
                     'id' => $del->id,
-                    'time' => $del->created_at ? $del->created_at->format('h:i A') : '08:12 AM',
-                    'driver_name' => $del->driver?->name ?? 'Alex Rider',
+                    'time' => $del->created_at ? $del->created_at->format('h:i A') : '',
+                    'driver_name' => $del->driver?->name ?? 'Driver',
                     'avatar' => $del->driver?->user?->avatar_url ?? null,
-                    'order_number' => '#' . ($del->order?->order_number ?? 'ORD-0021'),
-                    'branch_name' => ($del->order?->branch?->name ?? 'Eltham') . ' (EL01)',
+                    'order_number' => '#' . ($del->order?->order_number ?? 'ORD'),
+                    'branch_name' => $del->order?->branch?->name ?? 'Branch',
                     'status_label' => $statusBadge,
                     'badge_color' => $color,
                 ];
             });
-
-        if ($recentDeliveries->isEmpty()) {
-            $recentDeliveries = collect([
-                ['id' => 1, 'time' => '08:12 AM', 'driver_name' => 'Alex Rider', 'avatar' => null, 'order_number' => '#ORD-0021', 'branch_name' => 'Eltham (EL01)', 'status_label' => 'On Delivery', 'badge_color' => 'orange'],
-                ['id' => 2, 'time' => '08:45 AM', 'driver_name' => 'Cody Fisher', 'avatar' => null, 'order_number' => '#ORD-0044', 'branch_name' => 'Sidcup (SD02)', 'status_label' => 'Completed', 'badge_color' => 'green'],
-                ['id' => 3, 'time' => '09:15 AM', 'driver_name' => 'Jane Cooper', 'avatar' => null, 'order_number' => '#ORD-1511', 'branch_name' => 'Romford (RM1)', 'status_label' => 'At Restaurant', 'badge_color' => 'yellow'],
-                ['id' => 4, 'time' => '10:02 AM', 'driver_name' => 'Robert Fox', 'avatar' => null, 'order_number' => '#ORD-0210', 'branch_name' => 'Eltham (EL01)', 'status_label' => 'Offline', 'badge_color' => 'gray'],
-            ]);
-        }
 
         // Bottom 6 Summary KPI metrics
         $totalDeliveriesPeriod = Delivery::whereBetween('created_at', [$startDate, $endDate])->count();

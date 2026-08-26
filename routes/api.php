@@ -147,7 +147,12 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/hq-drivers', [DashboardController::class, 'hqDrivers']);
     Route::get('dashboard/drivers-management', [DashboardController::class, 'hqDrivers']);
 
+    // Super Admin CRM Management
     Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/crm', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/hq/crm', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/crm-management', [DashboardController::class, 'crmOverview']);
+
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints
