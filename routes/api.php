@@ -168,6 +168,14 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/chef/kds', [DashboardController::class, 'kdsOverview']);
     Route::get('kds/overview', [DashboardController::class, 'kdsOverview']);
 
+    // Super Admin Marketing Campaign Hub & Communications
+    Route::get('dashboard/marketing-overview', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/marketing', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/hq/marketing', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/campaigns-hub', [DashboardController::class, 'marketingOverview']);
+    Route::post('dashboard/marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
+    Route::post('marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
+
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints

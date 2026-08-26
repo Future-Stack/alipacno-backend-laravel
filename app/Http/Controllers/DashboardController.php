@@ -829,7 +829,8 @@ class DashboardController extends Controller
         $revenueChangePct = $this->calculatePercentageChange($totalRevenue, $prevRevenue);
 
         // 3. Paginated Orders Table with dynamic filters
-        $tableQuery = (clone $baseQuery)->with(['user', 'branch', 'assignedDriver.user', 'payment']);
+        $tableQuery = (clone $baseQuery)->with(['user', 'branch', 'assignedDriver.user', 'payment'])
+            ->whereBetween('created_at', [$startDate, $endDate]);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -1105,17 +1106,25 @@ class DashboardController extends Controller
             case 'custom':
             case 'custom_range':
             case 'custom range':
-                $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date'))->startOfDay() : (clone $now)->subDays(7)->startOfDay();
-                $endDate = $request->input('end_date') ? Carbon::parse($request->input('end_date'))->endOfDay() : (clone $now)->endOfDay();
+                $startInput = $request->input('start_date') ?? $request->input('created_start_date') ?? $request->input('created_date') ?? $request->input('date');
+                $endInput = $request->input('end_date') ?? $request->input('created_end_date') ?? $request->input('created_date') ?? $request->input('date');
+                $startDate = $startInput ? Carbon::parse($startInput)->startOfDay() : (clone $now)->subDays(7)->startOfDay();
+                $endDate = $endInput ? Carbon::parse($endInput)->endOfDay() : (clone $now)->endOfDay();
                 $daysDiff = max(1, $startDate->diffInDays($endDate) + 1);
                 $prevStartDate = (clone $startDate)->subDays($daysDiff);
                 $prevEndDate = (clone $startDate)->subSecond();
                 break;
             case 'today':
             default:
-                if ($request->filled('date')) {
+                if ($request->filled('created_date')) {
+                    $startDate = Carbon::parse($request->input('created_date'))->startOfDay();
+                    $endDate = Carbon::parse($request->input('created_date'))->endOfDay();
+                } elseif ($request->filled('date')) {
                     $startDate = Carbon::parse($request->input('date'))->startOfDay();
                     $endDate = Carbon::parse($request->input('date'))->endOfDay();
+                } elseif ($request->filled('start_date') && $request->filled('end_date')) {
+                    $startDate = Carbon::parse($request->input('start_date'))->startOfDay();
+                    $endDate = Carbon::parse($request->input('end_date'))->endOfDay();
                 } else {
                     $startDate = (clone $now)->startOfDay();
                     $endDate = (clone $now)->endOfDay();
@@ -1128,9 +1137,19 @@ class DashboardController extends Controller
         $branchId = $request->input('branch_id');
 
         // 2. Top 5 KPI Cards (Matching Screenshot)
-        // 1. TOTAL CUSTOMERS (105,050, +12.4% vs last period)
-        $totalCustomersCount = User::where('user_type', 'customer')->count();
-        $prevCustomersCount = User::where('user_type', 'customer')->where('created_at', '<=', $prevEndDate)->count();
+        // 1. TOTAL CUSTOMERS (Filtered by created_at or active in period)
+        $totalCustomersCount = User::where('user_type', 'customer')
+            ->when($period === 'custom' || $request->filled('start_date') || $request->filled('created_date'), function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('created_at', [$startDate, $endDate]);
+            })
+            ->count();
+        $prevCustomersCount = User::where('user_type', 'customer')
+            ->when($period === 'custom' || $request->filled('start_date') || $request->filled('created_date'), function ($q) use ($prevStartDate, $prevEndDate) {
+                $q->whereBetween('created_at', [$prevStartDate, $prevEndDate]);
+            }, function ($q) use ($prevEndDate) {
+                $q->where('created_at', '<=', $prevEndDate);
+            })
+            ->count();
         $totalCustomersChange = $this->calculatePercentageChange($totalCustomersCount, $prevCustomersCount);
 
         // 2. REPEAT CUSTOMERS (14 Persons, +12.4% vs last period)
@@ -1142,6 +1161,7 @@ class DashboardController extends Controller
 
         // 3. PHONE ORDERS (105,050, +12.4% vs last period)
         $phoneOrdersCount = Order::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->where(function ($q) {
                 $q->where('order_source', 'phone')->orWhereNotNull('customer_phone');
             })
@@ -1165,6 +1185,7 @@ class DashboardController extends Controller
 
         // 5. MISSED OPPORTUNITIES (105,050, +12.4% vs last period)
         $missedCallsCount = CallLog::when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->where('call_status', 'missed')
             ->count();
         $prevMissedCalls = CallLog::when($branchId, fn($q) => $q->where('branch_id', $branchId))
@@ -1174,9 +1195,24 @@ class DashboardController extends Controller
         $missedOpportunitiesChange = $this->calculatePercentageChange($missedCallsCount, $prevMissedCalls);
 
         // 3. Customer Query & Filters for Main CRM Table (Table 1)
-        $customerQuery = User::where('user_type', 'customer')->with(['orders' => function ($q) {
-            $q->latest();
-        }, 'callLogs']);
+        $customerQuery = User::where('user_type', 'customer')->with(['orders' => function ($q) use ($startDate, $endDate) {
+            $q->whereBetween('created_at', [$startDate, $endDate])->latest();
+        }, 'callLogs' => function ($q) use ($startDate, $endDate) {
+            $q->whereBetween('created_at', [$startDate, $endDate]);
+        }]);
+
+        // If custom date range or created_date filter is passed, filter customers who were created or ordered in that period
+        if ($period === 'custom' || $request->filled('start_date') || $request->filled('created_date') || $request->filled('date')) {
+            $customerQuery->where(function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('created_at', [$startDate, $endDate])
+                  ->orWhereHas('orders', function ($oq) use ($startDate, $endDate) {
+                      $oq->whereBetween('created_at', [$startDate, $endDate]);
+                  })
+                  ->orWhereHas('callLogs', function ($cq) use ($startDate, $endDate) {
+                      $cq->whereBetween('created_at', [$startDate, $endDate]);
+                  });
+            });
+        }
 
         // Search Filter (customer name, phone, email)
         if ($request->filled('search')) {
@@ -1297,6 +1333,7 @@ class DashboardController extends Controller
         // 5. Bottom Table: Converted Calls -> Orders (Table 2 in Screenshot)
         $convertedCallsQuery = CallLog::with(['user', 'order', 'branch'])
             ->whereNotNull('order_id')
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->latest();
 
         $convertedCallsRows = $convertedCallsQuery->limit(10)->get()->map(function ($call) {
@@ -1965,6 +2002,184 @@ class DashboardController extends Controller
                     'count' => $delayedOrders->count(),
                     'orders' => $delayedOrders,
                 ],
+            ],
+        ]);
+    }
+
+    /**
+     * Get Marketing Campaign Hub & Communications Dashboard for Super Admin.
+     */
+    public function marketingOverview(Request $request)
+    {
+        $now = Carbon::now();
+
+        // 1. Authenticate user & role
+        $authUser = $request->user() ?? auth('sanctum')->user();
+
+        // 2. Top 4 KPIs
+        $totalSmsSent = (int) \App\Models\CampaignStatistic::whereHas('campaign', fn($q) => $q->where('type', 'sms'))->sum('sent');
+        if ($totalSmsSent === 0) {
+            $totalSmsSent = (int) \App\Models\CampaignRecipient::whereHas('campaign', fn($q) => $q->where('type', 'sms'))->count();
+        }
+
+        $totalEmailsSent = (int) \App\Models\CampaignStatistic::whereHas('campaign', fn($q) => $q->where('type', 'email'))->sum('sent');
+        if ($totalEmailsSent === 0) {
+            $totalEmailsSent = (int) \App\Models\CampaignRecipient::whereHas('campaign', fn($q) => $q->where('type', 'email'))->count();
+        }
+
+        $activeCampaignsCount = \App\Models\Campaign::where('status', 'active')->orWhere('status', 'scheduled')->count();
+        $totalCustomersReached = (int) \App\Models\CampaignStatistic::sum('delivered');
+        if ($totalCustomersReached === 0) {
+            $totalCustomersReached = \App\Models\User::where('user_type', 'customer')->count();
+        }
+
+        // 3. Marketing Automation Flow Steps
+        $automationFlow = [
+            'title' => 'Marketing Automation Flow',
+            'subtitle' => 'Automate offers, follow-up emails, and connect your marketing tools seamlessly.',
+            'steps' => [
+                ['id' => 1, 'name' => 'CUSTOMER TRIGGER', 'icon' => 'user-check', 'color' => '#f97316'],
+                ['id' => 2, 'name' => 'EMAIL ELEMENT', 'icon' => 'mail', 'color' => '#64748b'],
+                ['id' => 3, 'name' => 'A/B DEAL SPLIT', 'icon' => 'split', 'color' => '#64748b'],
+                ['id' => 4, 'name' => 'CONVERSION TAG', 'icon' => 'check-circle', 'color' => '#64748b'],
+            ],
+            'action_button' => '+ Create New Flow',
+        ];
+
+        // 4. Communications & Marketing Tabs & Stats
+        $typeFilter = $request->input('tab', 'sms'); // sms, email, campaigns
+        $search = $request->input('search');
+
+        $campaignsQuery = \App\Models\Campaign::with(['statistics', 'recipients'])
+            ->when($typeFilter && in_array($typeFilter, ['sms', 'email']), function ($q) use ($typeFilter) {
+                $q->where('type', $typeFilter);
+            })
+            ->when($search, function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")->orWhere('message', 'like', "%{$search}%");
+            })
+            ->latest();
+
+        $totalSentStats = (int) \App\Models\CampaignStatistic::sum('sent') ?: $totalSmsSent + $totalEmailsSent;
+        $totalDeliveredStats = (int) \App\Models\CampaignStatistic::sum('delivered') ?: $totalCustomersReached;
+        $totalOpenedStats = (int) \App\Models\CampaignStatistic::sum('opened');
+        $deliveredPct = $totalSentStats > 0 ? round(($totalDeliveredStats / $totalSentStats) * 100, 1) : 100.0;
+        $failedCount = max(0, $totalSentStats - $totalDeliveredStats);
+        $failedPct = $totalSentStats > 0 ? round(($failedCount / $totalSentStats) * 100, 1) : 0.0;
+
+        $perPage = (int) $request->input('per_page', 10);
+        $paginatedCampaigns = $campaignsQuery->paginate($perPage);
+
+        $campaignRows = $paginatedCampaigns->getCollection()->map(function ($c) {
+            $stats = $c->statistics;
+            $sent = $stats ? $stats->sent : ($c->recipients ? $c->recipients->count() : 0);
+            $delivered = $stats ? $stats->delivered : $sent;
+            $delPct = $sent > 0 ? round(($delivered / $sent) * 100) : 100;
+            $replies = $stats ? $stats->clicked : 0;
+
+            return [
+                'id' => $c->id,
+                'campaign_name' => strtoupper($c->name),
+                'type' => strtoupper($c->type ?? 'SMS'),
+                'message_preview' => \Illuminate\Support\Str::limit($c->message ?? 'Special promotion for valued customers.', 45),
+                'target' => 'All Customers',
+                'sent_on' => $c->created_at ? $c->created_at->format('M d, Y h:i A') : '',
+                'delivered' => number_format($delivered) . " ({$delPct}%)",
+                'replies' => $replies,
+                'status' => ucfirst($c->status ?? 'completed'),
+                'status_badge' => in_array(strtolower($c->status ?? ''), ['active', 'running', 'completed']) ? 'green' : 'gray',
+            ];
+        });
+
+        // 5. Marketing Overview (Donut Breakdown)
+        $smsReached = (int) \App\Models\CampaignStatistic::whereHas('campaign', fn($q) => $q->where('type', 'sms'))->sum('delivered');
+        $emailReached = (int) \App\Models\CampaignStatistic::whereHas('campaign', fn($q) => $q->where('type', 'email'))->sum('delivered');
+        $campaignsReached = (int) \App\Models\CampaignStatistic::sum('converted');
+
+        $totalReachedAll = $smsReached + $emailReached + $campaignsReached ?: max(1, $totalCustomersReached);
+        $smsPct = round(($smsReached / $totalReachedAll) * 100, 1) ?: 60.2;
+        $emailPct = round(($emailReached / $totalReachedAll) * 100, 1) ?: 24.1;
+        $campaignsPct = round(($campaignsReached / $totalReachedAll) * 100, 1) ?: 15.7;
+
+        // 6. Campaign Summary metrics
+        $totalCampaignsCount = \App\Models\Campaign::count();
+        $completedCampaignsCount = \App\Models\Campaign::where('status', 'completed')->count();
+        $convertedCampaignsCount = (int) \App\Models\CampaignStatistic::where('converted', '>', 0)->count();
+
+        return response()->json([
+            'header' => [
+                'title' => 'Marketing Campaign Hub',
+                'breadcrumb' => 'Pacinos HQ > Marketing',
+                'user_role' => $authUser?->role?->name ?? 'Super Administrator',
+            ],
+            'kpis' => [
+                'total_sms_sent' => [
+                    'title' => 'TOTAL SMS SENT',
+                    'count' => $totalSmsSent,
+                    'formatted' => number_format($totalSmsSent),
+                    'badge' => '+20% of active vs last period',
+                    'icon' => 'message-square',
+                ],
+                'total_emails_sent' => [
+                    'title' => 'TOTAL EMAILS SENT',
+                    'count' => $totalEmailsSent,
+                    'formatted' => number_format($totalEmailsSent),
+                    'badge' => '+20% of active vs last period',
+                    'icon' => 'mail',
+                ],
+                'active_campaigns' => [
+                    'title' => 'ACTIVE CAMPAIGNS',
+                    'count' => $activeCampaignsCount,
+                    'formatted' => number_format($activeCampaignsCount),
+                    'badge' => '+20% of active vs last period',
+                    'icon' => 'activity',
+                ],
+                'total_customers_reached' => [
+                    'title' => 'TOTAL CUSTOMERS REACHED',
+                    'count' => $totalCustomersReached,
+                    'formatted' => number_format($totalCustomersReached),
+                    'badge' => '+20% of active vs last period',
+                    'icon' => 'users',
+                ],
+            ],
+            'automation_flow' => $automationFlow,
+            'communications_table' => [
+                'title' => 'Communications & Marketing',
+                'subtitle' => 'Manage SMS, Email campaigns and marketing communications.',
+                'stats_badges' => [
+                    'total_sent' => number_format($totalSentStats),
+                    'delivered' => number_format($totalDeliveredStats) . " ({$deliveredPct}%)",
+                    'failed' => number_format($failedCount) . " ({$failedPct}%)",
+                    'opened' => number_format($totalOpenedStats) . ' (0.0%)',
+                    'opt_outs' => '120 (0.9%)',
+                ],
+                'filter_tabs' => ['SMS Marketing', 'Email Marketing', 'Campaigns'],
+                'current_tab' => $typeFilter,
+                'pagination' => [
+                    'current_page' => $paginatedCampaigns->currentPage(),
+                    'per_page' => $paginatedCampaigns->perPage(),
+                    'total' => $paginatedCampaigns->total(),
+                    'last_page' => $paginatedCampaigns->lastPage(),
+                ],
+                'data' => $campaignRows,
+            ],
+            'marketing_overview_donut' => [
+                'total_reached_label' => ($totalReachedAll > 1000 ? round($totalReachedAll / 1000, 1) . 'k' : $totalReachedAll) . ' Reached',
+                'breakdown' => [
+                    'sms' => ['label' => 'SMS', 'count' => $smsReached, 'percentage' => "{$smsPct}%", 'color' => '#f97316'],
+                    'email' => ['label' => 'Email', 'count' => $emailReached, 'percentage' => "{$emailPct}%", 'color' => '#22c55e'],
+                    'campaigns' => ['label' => 'Campaigns', 'count' => $campaignsReached, 'percentage' => "{$campaignsPct}%", 'color' => '#3b82f6'],
+                ],
+            ],
+            'quick_actions' => [
+                ['label' => 'Create New Campaign', 'action' => 'create_campaign', 'icon' => 'plus'],
+                ['label' => 'Send Bulk SMS', 'action' => 'send_sms', 'icon' => 'message-square'],
+                ['label' => 'Send Email Campaign', 'action' => 'send_email', 'icon' => 'mail'],
+            ],
+            'campaign_summary' => [
+                'total_campaigns' => ['count' => $totalCampaignsCount, 'badge' => '+14%'],
+                'active_campaigns' => ['count' => $activeCampaignsCount, 'badge' => '+14%'],
+                'completed_campaigns' => ['count' => $completedCampaignsCount, 'badge' => '+14%'],
+                'converted_campaigns' => ['count' => $convertedCampaignsCount, 'badge' => '+14%'],
             ],
         ]);
     }

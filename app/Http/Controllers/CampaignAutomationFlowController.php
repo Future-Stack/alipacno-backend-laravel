@@ -49,20 +49,73 @@ class CampaignAutomationFlowController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'campaign_id' => 'required|exists:campaigns,id',
-            'trigger' => 'required|string|max:255',
+            'campaign_id' => 'nullable|exists:campaigns,id',
+            'campaign_title' => 'nullable|string|max:255',
+            'gender' => 'nullable|string|max:50',
+            'postcode' => 'nullable|string|max:50',
+            'marketing_type' => 'nullable|string|in:sms,email,push_notification,in_app,all',
+            'period' => 'nullable|string|max:100',
+            'campaign_description_details' => 'nullable|string',
+            'description' => 'nullable|string',
+            'trigger' => 'nullable|string|max:255',
             'condition' => 'nullable|string|max:255',
-            'action' => 'required|string|max:255',
+            'action' => 'nullable|string|max:255',
             'status' => 'nullable|string|in:active,inactive',
+            'attachment' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
         ]);
 
-        if (empty($validated['status'])) {
-            $validated['status'] = 'active';
+        $authUser = $request->user() ?? auth('sanctum')->user();
+
+        // 1. Auto-create or resolve Campaign if campaign_title provided
+        $campaignId = $validated['campaign_id'] ?? null;
+        if (!$campaignId && !empty($validated['campaign_title'])) {
+            $campaign = \App\Models\Campaign::create([
+                'name' => $validated['campaign_title'],
+                'type' => $validated['marketing_type'] ?? 'sms',
+                'subject' => $validated['campaign_title'],
+                'message' => $validated['campaign_description_details'] ?? $validated['description'] ?? 'Automated campaign flow',
+                'status' => ($validated['status'] ?? 'active') === 'active' ? 'running' : 'draft',
+                'created_by' => $authUser?->id,
+            ]);
+            $campaignId = $campaign->id;
+        } elseif (!$campaignId) {
+            $campaignId = \App\Models\Campaign::first()?->id ?? 1;
         }
 
-        $flow = CampaignAutomationFlow::create($validated);
+        // 2. Handle file attachment upload if present
+        $attachmentPath = null;
+        if ($request->hasFile('attachment')) {
+            $attachmentPath = $request->file('attachment')->store('campaigns/attachments', 'public');
+        }
 
-        return response()->json($flow->load('campaign'), 201);
+        // 3. Build trigger/condition/action from flow form inputs
+        $trigger = $validated['trigger'] ?? ('Customer Trigger: ' . ($validated['marketing_type'] ?? 'sms') . ' (' . ($validated['gender'] ?? 'All') . ')');
+        $condition = $validated['condition'] ?? ($validated['postcode'] ? 'Postcode: ' . $validated['postcode'] : 'All Customers');
+        $action = $validated['action'] ?? ($validated['campaign_title'] ?? 'Send Promotional Offer');
+        $status = $validated['status'] ?? 'active';
+
+        $flow = CampaignAutomationFlow::create([
+            'campaign_id' => $campaignId,
+            'trigger' => $trigger,
+            'condition' => $condition,
+            'action' => $action,
+            'status' => $status,
+        ]);
+
+        return response()->json([
+            'message' => 'Automation flow created successfully',
+            'data' => $flow->load('campaign'),
+            'form_summary' => [
+                'gender' => $validated['gender'] ?? 'All',
+                'postcode' => $validated['postcode'] ?? 'All Sectors',
+                'marketing_type' => $validated['marketing_type'] ?? 'sms',
+                'campaign_title' => $validated['campaign_title'] ?? $flow->campaign?->name,
+                'period' => $validated['period'] ?? null,
+                'description' => $validated['campaign_description_details'] ?? $validated['description'] ?? null,
+                'attachment_url' => $attachmentPath ? asset('storage/' . $attachmentPath) : null,
+                'flow_integration_status' => $status === 'active' ? 'ACTIVE STATE' : 'INACTIVE',
+            ],
+        ], 201);
     }
 
     /**

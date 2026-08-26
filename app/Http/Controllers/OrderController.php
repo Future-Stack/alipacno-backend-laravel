@@ -45,12 +45,21 @@ class OrderController extends Controller
             'payment',
         ]);
 
-        $authUser = $request->user();
+        $authUser = $request->user() ?? auth('sanctum')->user();
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
-        } elseif ($authUser && $authUser->hasRole(['Branch Manager', 'Cashier', 'Chef', 'Waiter', 'Delivery Driver'])) {
-            // Automatically detect branch from authenticated staff/manager role
+        } elseif ($authUser && in_array($authUser->user_type, ['branch_admin', 'staff', 'driver'])) {
+            // Automatically detect branch for branch-scoped staff and managers
+            $userBranchId = $authUser->branch_id 
+                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
+                ?? $authUser->driver?->branch_id;
+
+            if ($userBranchId) {
+                $query->where('branch_id', $userBranchId);
+            }
+        } elseif ($authUser && method_exists($authUser, 'hasRole') && $authUser->hasRole(['Branch Manager', 'branch_admin', 'Cashier', 'cashier', 'Chef', 'chef', 'Waiter', 'waiter', 'Delivery Driver', 'driver'])) {
             $userBranchId = $authUser->branch_id 
                 ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
                 ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
@@ -81,6 +90,27 @@ class OrderController extends Controller
 
         if ($authUser && $authUser->hasRole('Customer')) {
             $query->where('user_id', $authUser->id);
+        }
+
+        // Date & Period Filter (Today, Yesterday, Weekly, Monthly, Custom)
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $startDate = \Carbon\Carbon::parse($request->start_date)->startOfDay();
+            $endDate = \Carbon\Carbon::parse($request->end_date)->endOfDay();
+            $query->whereBetween('created_at', [$startDate, $endDate]);
+        } elseif ($request->filled('date')) {
+            $query->whereDate('created_at', $request->date);
+        } elseif ($request->filled('period')) {
+            $period = strtolower($request->period);
+            $now = \Carbon\Carbon::now();
+            if ($period === 'today') {
+                $query->whereDate('created_at', \Carbon\Carbon::today());
+            } elseif ($period === 'yesterday') {
+                $query->whereDate('created_at', \Carbon\Carbon::yesterday());
+            } elseif ($period === 'weekly') {
+                $query->whereBetween('created_at', [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()]);
+            } elseif ($period === 'monthly') {
+                $query->whereBetween('created_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()]);
+            }
         }
 
         if ($request->filled('search')) {
