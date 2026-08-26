@@ -141,6 +141,12 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/deliveries-management', [DashboardController::class, 'deliveriesManagement']);
     Route::get('dashboard/deliveries', [DashboardController::class, 'deliveriesManagement']);
 
+    // Super Admin / HQ Drivers Management (Global across all branches)
+    Route::get('dashboard/hq/drivers', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/hq/drivers-management', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/hq-drivers', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/drivers-management', [DashboardController::class, 'hqDrivers']);
+
     Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
