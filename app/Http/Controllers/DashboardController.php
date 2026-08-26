@@ -1400,6 +1400,576 @@ class DashboardController extends Controller
 
 
     /**
+     * Get Income Reports & Analytics Dashboard for Branch Manager / Super Admin.
+     */
+    public function incomeReports(Request $request)
+    {
+        $now = Carbon::now();
+
+        // 1. Authenticate & Resolve Branch
+        $authUser = $request->user() ?? auth('sanctum')->user();
+        $currentBranchId = $request->input('branch_id')
+            ?? $authUser?->branch_id
+            ?? \App\Models\BranchAdmin::where('email', $authUser?->email)->value('branch_id')
+            ?? \App\Models\Staff::where('email', $authUser?->email)->value('branch_id')
+            ?? $authUser?->driver?->branch_id
+            ?? 1;
+
+        $branch = Branch::find($currentBranchId) ?? Branch::first();
+
+        // 2. Resolve Period Filter (Today, Week, Month, Year, Last Week, This Week, Yesterday, Custom)
+        $period = strtolower(str_replace([' ', '-'], '_', $request->input('period', 'today')));
+        switch ($period) {
+            case 'yesterday':
+                $startDate = (clone $now)->subDay()->startOfDay();
+                $endDate = (clone $now)->subDay()->endOfDay();
+                $prevStartDate = (clone $startDate)->subDay()->startOfDay();
+                $prevEndDate = (clone $startDate)->subDay()->endOfDay();
+                break;
+            case 'last_week':
+                $startDate = (clone $now)->subWeek()->startOfWeek();
+                $endDate = (clone $now)->subWeek()->endOfWeek();
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
+            case 'week':
+            case 'weekly':
+            case 'this_week':
+                $startDate = (clone $now)->startOfWeek();
+                $endDate = (clone $now)->endOfWeek();
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
+            case 'month':
+            case 'monthly':
+                $startDate = (clone $now)->startOfMonth();
+                $endDate = (clone $now)->endOfMonth();
+                $prevStartDate = (clone $startDate)->subMonth()->startOfMonth();
+                $prevEndDate = (clone $startDate)->subMonth()->endOfMonth();
+                break;
+            case 'year':
+            case 'yearly':
+                $startDate = (clone $now)->startOfYear();
+                $endDate = (clone $now)->endOfYear();
+                $prevStartDate = (clone $startDate)->subYear()->startOfYear();
+                $prevEndDate = (clone $startDate)->subYear()->endOfYear();
+                break;
+            case 'custom':
+                $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date'))->startOfDay() : (clone $now)->subDays(7)->startOfDay();
+                $endDate = $request->input('end_date') ? Carbon::parse($request->input('end_date'))->endOfDay() : (clone $now)->endOfDay();
+                $daysDiff = max(1, $startDate->diffInDays($endDate) + 1);
+                $prevStartDate = (clone $startDate)->subDays($daysDiff);
+                $prevEndDate = (clone $startDate)->subSecond();
+                break;
+            case 'today':
+            default:
+                if ($request->filled('date')) {
+                    $startDate = Carbon::parse($request->input('date'))->startOfDay();
+                    $endDate = Carbon::parse($request->input('date'))->endOfDay();
+                } else {
+                    $startDate = (clone $now)->startOfDay();
+                    $endDate = (clone $now)->endOfDay();
+                }
+                $prevStartDate = (clone $startDate)->subDay();
+                $prevEndDate = (clone $endDate)->subDay();
+                break;
+        }
+
+        $baseOrders = Order::where('branch_id', $currentBranchId);
+
+        // 3. Card 1: Sales Analytics (Total Revenue, Average Order, Orders Count)
+        $currentRevenue = (float) (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('payment_status', ['paid', 'completed'])
+            ->sum('total');
+        $prevRevenue = (float) (clone $baseOrders)->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->whereIn('payment_status', ['paid', 'completed'])
+            ->sum('total');
+        $revenueChange = $this->calculatePercentageChange($currentRevenue, $prevRevenue);
+
+        $currentOrdersCount = (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])->count();
+        $prevOrdersCount = (clone $baseOrders)->whereBetween('created_at', [$prevStartDate, $prevEndDate])->count();
+        $ordersChange = $this->calculatePercentageChange($currentOrdersCount, $prevOrdersCount);
+
+        $avgOrderValue = $currentOrdersCount > 0 ? round($currentRevenue / $currentOrdersCount, 2) : 0.0;
+        $prevAvgOrderValue = $prevOrdersCount > 0 ? round($prevRevenue / $prevOrdersCount, 2) : 0.0;
+        $avgOrderChange = $this->calculatePercentageChange($avgOrderValue, $prevAvgOrderValue);
+
+        // 4. Card 2: Product Performance (Top Seller, Categories Active, Avg Items/Order)
+        $topSellerItem = OrderItem::whereHas('order', function ($q) use ($currentBranchId, $startDate, $endDate) {
+            $q->where('branch_id', $currentBranchId)->whereBetween('created_at', [$startDate, $endDate]);
+        })->select('item_name', DB::raw('SUM(quantity) as total_sold'))
+          ->groupBy('item_name')
+          ->orderByDesc('total_sold')
+          ->first();
+
+        $activeCategoriesCount = \App\Models\Category::where('is_active', true)->count();
+        $totalItemsSold = (int) OrderItem::whereHas('order', function ($q) use ($currentBranchId, $startDate, $endDate) {
+            $q->where('branch_id', $currentBranchId)->whereBetween('created_at', [$startDate, $endDate]);
+        })->sum('quantity');
+        $avgItemsPerOrder = $currentOrdersCount > 0 ? round($totalItemsSold / $currentOrdersCount, 1) : 0.0;
+
+        // 5. Card 3: Customer Insights (New Customers, Returning Rate, Loyalty Members)
+        $newCustomersCount = User::where('user_type', 'customer')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        $prevNewCustomers = User::where('user_type', 'customer')
+            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->count();
+        $newCustomersChange = $this->calculatePercentageChange($newCustomersCount, $prevNewCustomers);
+
+        $totalCustomersPeriod = User::where('user_type', 'customer')->whereHas('orders', function ($q) use ($currentBranchId, $startDate, $endDate) {
+            $q->where('branch_id', $currentBranchId)->whereBetween('created_at', [$startDate, $endDate]);
+        })->count();
+        $returningCustomersCount = User::where('user_type', 'customer')->whereHas('orders', function ($q) use ($currentBranchId) {
+            $q->where('branch_id', $currentBranchId);
+        }, '>', 1)->count();
+        $returningRatePct = $totalCustomersPeriod > 0 ? round(($returningCustomersCount / $totalCustomersPeriod) * 100) : 0;
+
+        $loyaltyMembersCount = User::where('user_type', 'customer')->where('loyalty_points_balance', '>', 0)->count();
+
+        // 6. Card 4: Operations (Avg Prep Time, Order Accuracy, Staff Hours)
+        $avgPrepTimeMins = (int) (\App\Models\MenuItem::where('branch_id', $currentBranchId)
+            ->whereNotNull('preparation_time')
+            ->avg('preparation_time')
+            ?: \App\Models\KitchenOrder::whereHas('order', fn($q) => $q->where('branch_id', $currentBranchId))
+                ->whereNotNull('completed_at')
+                ->whereNotNull('started_at')
+                ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, started_at, completed_at)) as avg_time')
+                ->value('avg_time')
+            ?: 12);
+
+        $completedOrdersCount = (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('order_status', ['completed', 'delivered'])
+            ->count();
+        $orderAccuracyPct = $currentOrdersCount > 0 ? round(($completedOrdersCount / $currentOrdersCount) * 100, 1) : 100.0;
+
+        $staffHours = StaffAttendance::whereDate('clock_in', '>=', $startDate->toDateString())
+            ->whereDate('clock_in', '<=', $endDate->toDateString())
+            ->whereNotNull('clock_out')
+            ->selectRaw('SUM(TIMESTAMPDIFF(HOUR, clock_in, clock_out)) as total_hours')
+            ->value('total_hours') ?: 0;
+
+        // 7. Middle Left: Top Products (Horizontal Orange Bars)
+        $topProductsQuery = OrderItem::whereHas('order', function ($q) use ($currentBranchId, $startDate, $endDate) {
+            $q->where('branch_id', $currentBranchId)->whereBetween('created_at', [$startDate, $endDate]);
+        })->select('item_name', DB::raw('SUM(quantity) as total_sold'), DB::raw('SUM(subtotal) as total_revenue'))
+          ->groupBy('item_name')
+          ->orderByDesc('total_sold')
+          ->limit(5)
+          ->get();
+
+        $maxSold = $topProductsQuery->max('total_sold') ?: 1;
+        $topProducts = $topProductsQuery->map(function ($item) use ($maxSold) {
+            $sold = (int) $item->total_sold;
+            $rev = (float) $item->total_revenue;
+            return [
+                'name' => $item->item_name,
+                'sold_count' => $sold,
+                'sold_label' => $sold . ' sold',
+                'revenue' => $rev,
+                'formatted_revenue' => '£' . number_format($rev, 2),
+                'progress_pct' => round(($sold / $maxSold) * 100),
+            ];
+        });
+
+        // 8. Middle Right: Payment Methods Breakdown (Card, Cash, Digital Wallet)
+        $cardRevenue = (float) (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('payment_method', ['card', 'stripe', 'credit_card', 'debit_card'])
+            ->sum('total');
+        $cashRevenue = (float) (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])
+            ->where('payment_method', 'cash')
+            ->sum('total');
+        $digitalRevenue = (float) (clone $baseOrders)->whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('payment_method', ['digital_wallet', 'apple_pay', 'google_pay', 'paypal', 'online', 'wallet'])
+            ->sum('total');
+
+        $totalProcessed = $cardRevenue + $cashRevenue + $digitalRevenue;
+        if ($totalProcessed <= 0 && $currentRevenue > 0) {
+            $totalProcessed = $currentRevenue;
+            $cardRevenue = $currentRevenue;
+        }
+
+        $cardPct = $totalProcessed > 0 ? round(($cardRevenue / $totalProcessed) * 100) : 0;
+        $cashPct = $totalProcessed > 0 ? round(($cashRevenue / $totalProcessed) * 100) : 0;
+        $digitalPct = $totalProcessed > 0 ? max(0, 100 - $cardPct - $cashPct) : 0;
+
+        $paymentMethods = [
+            'card' => [
+                'name' => 'Card',
+                'amount' => $cardRevenue,
+                'formatted_amount' => '£' . number_format($cardRevenue, 2),
+                'percentage' => $cardPct . '%',
+                'percentage_num' => $cardPct,
+                'color' => '#8b5cf6', // purple
+            ],
+            'cash' => [
+                'name' => 'Cash',
+                'amount' => $cashRevenue,
+                'formatted_amount' => '£' . number_format($cashRevenue, 2),
+                'percentage' => $cashPct . '%',
+                'percentage_num' => $cashPct,
+                'color' => '#14b8a6', // teal
+            ],
+            'digital_wallet' => [
+                'name' => 'Digital Wallet',
+                'amount' => $digitalRevenue,
+                'formatted_amount' => '£' . number_format($digitalRevenue, 2),
+                'percentage' => $digitalPct . '%',
+                'percentage_num' => $digitalPct,
+                'color' => '#3b82f6', // blue
+            ],
+            'total_processed' => $totalProcessed,
+            'formatted_total_processed' => '£' . number_format($totalProcessed, 2),
+        ];
+
+        // 9. Bottom Section: Hourly Performance Table
+        $hourlyOrders = (clone $baseOrders)->with(['items'])
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($o) {
+                $statusUpper = strtoupper(str_replace('_', ' ', $o->order_status));
+                $badgeColor = 'green';
+                if ($o->order_status === 'preparing') {
+                    $badgeColor = 'orange';
+                } elseif ($o->order_status === 'out_for_delivery' || $o->order_status === 'on_delivery') {
+                    $badgeColor = 'blue';
+                } elseif ($o->order_status === 'cancelled') {
+                    $badgeColor = 'red';
+                }
+
+                $itemsCount = $o->items ? $o->items->sum('quantity') : 1;
+                $perfPct = min(100, max(20, (int) round(((float) $o->total / 150) * 100)));
+
+                return [
+                    'id' => $o->id,
+                    'order_id' => '#' . ltrim(str_replace('ORD-', '', $o->order_number), '#'),
+                    'raw_order_number' => $o->order_number,
+                    'order_type' => ucfirst(str_replace('_', ' ', $o->order_type ?? 'Delivery')),
+                    'payment' => ucfirst($o->payment_method ?? 'Card'),
+                    'status' => $statusUpper,
+                    'status_label' => $statusUpper,
+                    'badge_color' => $badgeColor,
+                    'time' => $o->created_at ? $o->created_at->format('H:i') : '',
+                    'items_count' => $itemsCount,
+                    'revenue' => (float) $o->total,
+                    'formatted_revenue' => '£' . number_format((float) $o->total, 2),
+                    'performance_pct' => $perfPct . '%',
+                ];
+            });
+
+        return response()->json([
+            'header' => [
+                'nearest_branch' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
+                'branch_id' => $branch?->id ?? 1,
+                'branch_code' => $branch?->branch_code ?? 'BR-1',
+                'current_time' => $now->format('D, M d, h:i:s A'),
+                'system_status' => [
+                    'cloud' => 'Connected',
+                    'printer' => 'Connected',
+                    'terminal' => 'Connected',
+                    'is_online' => true,
+                ],
+                'user_role' => $authUser?->role?->name ?? ($authUser?->user_type === 'branch_admin' ? 'Branch Manager' : 'HQ Admin'),
+            ],
+            'page_info' => [
+                'title' => 'Income Reports & Analytics',
+                'subtitle' => 'Detailed insights into your business performance',
+                'current_period' => $period,
+                'available_periods' => ['Today', 'Week', 'Month', 'Year', 'Last Week', 'This Week', 'Yesterday'],
+            ],
+            'kpis' => [
+                'sales_analytics' => [
+                    'title' => 'Sales Analytics',
+                    'total_revenue' => [
+                        'amount' => $currentRevenue,
+                        'formatted' => '£' . number_format($currentRevenue, 2),
+                        'change_pct' => $revenueChange,
+                    ],
+                    'average_order' => [
+                        'amount' => $avgOrderValue,
+                        'formatted' => '£' . number_format($avgOrderValue, 2),
+                        'change_pct' => $avgOrderChange,
+                    ],
+                    'orders_count' => [
+                        'count' => $currentOrdersCount,
+                        'formatted' => (string) $currentOrdersCount,
+                        'change_pct' => $ordersChange,
+                    ],
+                ],
+                'product_performance' => [
+                    'title' => 'Product Performance',
+                    'top_seller' => [
+                        'name' => $topSellerItem?->item_name ?? 'N/A',
+                        'sold_label' => ($topSellerItem ? $topSellerItem->total_sold : 0) . ' sold',
+                    ],
+                    'categories_active' => [
+                        'count' => $activeCategoriesCount,
+                        'formatted' => (string) $activeCategoriesCount,
+                        'change_pct' => '+0',
+                    ],
+                    'avg_items_per_order' => [
+                        'value' => (string) $avgItemsPerOrder,
+                        'change_pct' => '+0',
+                    ],
+                ],
+                'customer_insights' => [
+                    'title' => 'Customer Insights',
+                    'new_customers' => [
+                        'count' => $newCustomersCount,
+                        'formatted' => (string) $newCustomersCount,
+                        'change_pct' => $newCustomersChange,
+                    ],
+                    'returning_rate' => [
+                        'percentage' => $returningRatePct . '%',
+                        'change_pct' => '+0%',
+                    ],
+                    'loyalty_members' => [
+                        'count' => $loyaltyMembersCount,
+                        'formatted' => number_format($loyaltyMembersCount),
+                        'change_pct' => '+0',
+                    ],
+                ],
+                'operations' => [
+                    'title' => 'Operations',
+                    'avg_prep_time' => [
+                        'time' => $avgPrepTimeMins . ' min',
+                        'change_label' => '0 min',
+                    ],
+                    'order_accuracy' => [
+                        'percentage' => $orderAccuracyPct . '%',
+                        'change_pct' => '+0%',
+                    ],
+                    'staff_hours' => [
+                        'hours' => (string) round($staffHours),
+                        'change_pct' => '+0',
+                    ],
+                ],
+            ],
+            'top_products' => [
+                'title' => 'Top Products',
+                'data' => $topProducts,
+            ],
+            'payment_methods' => $paymentMethods,
+            'hourly_performance' => [
+                'title' => 'HOURLY PERFORMANCE',
+                'data' => $hourlyOrders,
+            ],
+        ]);
+    }
+
+    /**
+     * Get KDS Dashboard Overview with branch-wise stations, order counts, and live tickets.
+     */
+    public function kdsOverview(Request $request)
+    {
+        $now = Carbon::now();
+
+        // 1. Authenticate & Resolve Branch via Token or Query
+        $authUser = $request->user() ?? auth('sanctum')->user();
+        $currentBranchId = $request->input('branch_id')
+            ?? $authUser?->branch_id
+            ?? \App\Models\BranchAdmin::where('email', $authUser?->email)->value('branch_id')
+            ?? \App\Models\Staff::where('email', $authUser?->email)->value('branch_id')
+            ?? 1;
+
+        $branch = Branch::find($currentBranchId) ?? Branch::first();
+
+        // 2. Summary Pill (Avg Prep: 8m 30s | Active: 12 | Delayed: 2)
+        $activeOrdersCount = Order::where('branch_id', $currentBranchId)
+            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->count();
+
+        $delayedOrdersCount = Order::where('branch_id', $currentBranchId)
+            ->whereNotNull('estimated_delivery_time')
+            ->where('estimated_delivery_time', '<', $now)
+            ->whereNotIn('order_status', ['completed', 'delivered', 'cancelled'])
+            ->count();
+
+        $avgPrepTimeMins = (int) (\App\Models\MenuItem::where('branch_id', $currentBranchId)->avg('preparation_time') ?: 8);
+
+        // 3. Station Filter Pills (All Station, Grill, Fryer, Drinks, Dessert...)
+        $stationsQuery = KitchenStation::where('branch_id', $currentBranchId)->where('status', 'active');
+        $stationsList = $stationsQuery->get()->map(function ($st) use ($currentBranchId) {
+            $stationOrdersCount = KitchenOrder::where('kitchen_station_id', $st->id)
+                ->whereIn('status', ['pending', 'preparing'])
+                ->count();
+
+            $icon = 'grid';
+            $nameLower = strtolower($st->name);
+            if (str_contains($nameLower, 'grill')) {
+                $icon = 'grill';
+            } elseif (str_contains($nameLower, 'fryer') || str_contains($nameLower, 'fry')) {
+                $icon = 'fryer';
+            } elseif (str_contains($nameLower, 'drink') || str_contains($nameLower, 'beverage')) {
+                $icon = 'drinks';
+            } elseif (str_contains($nameLower, 'dessert') || str_contains($nameLower, 'sweet')) {
+                $icon = 'dessert';
+            }
+
+            return [
+                'id' => $st->id,
+                'name' => $st->name,
+                'icon' => $icon,
+                'active_orders_count' => $stationOrdersCount,
+            ];
+        });
+
+        // 4. Filter by selected station
+        $selectedStationId = $request->input('station_id');
+
+        $orderFormatter = function ($o, $defaultActionLabel, $defaultActionColor, $defaultNextStatus) use ($now) {
+            $created = $o->created_at ? Carbon::parse($o->created_at) : $now;
+            $diffMins = (int) $created->diffInMinutes($now);
+            $diffSecs = (int) ($created->diffInSeconds($now) % 60);
+            $timerFormatted = sprintf('%d:%02d', $diffMins, $diffSecs);
+
+            $timerColor = 'green';
+            if ($diffMins >= 15) {
+                $timerColor = 'red';
+            } elseif ($diffMins >= 8) {
+                $timerColor = 'yellow';
+            }
+
+            $orderTypeLower = strtolower($o->order_type ?? 'dine_in');
+            $typeColor = 'teal'; // Dine in
+            if (str_contains($orderTypeLower, 'collect') || str_contains($orderTypeLower, 'pickup')) {
+                $typeColor = 'orange';
+            } elseif (str_contains($orderTypeLower, 'deliver')) {
+                $typeColor = 'purple';
+            }
+
+            $items = $o->items ? $o->items->map(function ($i) {
+                $modifiers = [];
+                if ($i->cooking_preference) $modifiers[] = $i->cooking_preference;
+                if ($i->spice_level) $modifiers[] = $i->spice_level;
+                if ($i->size_name) $modifiers[] = $i->size_name;
+                if ($i->options_summary) $modifiers[] = $i->options_summary;
+
+                return [
+                    'id' => $i->id,
+                    'item_name' => $i->item_name,
+                    'quantity' => (int) $i->quantity,
+                    'quantity_label' => $i->quantity . 'x ' . $i->item_name,
+                    'modifiers' => $modifiers,
+                    'special_instructions_note' => $i->special_instructions,
+                ];
+            }) : [];
+
+            return [
+                'id' => $o->id,
+                'order_number' => '#' . ltrim(str_replace('ORD-', '', $o->order_number), '#'),
+                'raw_order_number' => $o->order_number,
+                'order_type' => ucwords(str_replace('_', ' ', $o->order_type ?? 'Dine in')),
+                'type_badge_color' => $typeColor,
+                'order_time' => $created->format('h:i A'),
+                'elapsed_timer' => $timerFormatted,
+                'timer_color' => $timerColor,
+                'is_delayed' => $diffMins >= 15,
+                'customer_notified' => (bool) ($o->customer_notified ?? false),
+                'order_note' => $o->notes,
+                'items_count' => $o->items ? $o->items->sum('quantity') : 1,
+                'items' => $items,
+                'action_button' => [
+                    'label' => $defaultActionLabel,
+                    'color' => $defaultActionColor,
+                    'next_status' => $defaultNextStatus,
+                ],
+            ];
+        };
+
+        // 5. Column 1: New Orders (pending, accepted)
+        $newOrders = Order::with(['items.menuItem'])
+            ->where('branch_id', $currentBranchId)
+            ->whereIn('order_status', ['pending', 'accepted'])
+            ->when($selectedStationId, function ($q) use ($selectedStationId) {
+                $q->whereHas('kitchenOrders', fn($kq) => $kq->where('kitchen_station_id', $selectedStationId));
+            })
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn($o) => $orderFormatter($o, 'Start Preparing', 'orange', 'preparing'));
+
+        // 6. Column 2: Preparing (preparing)
+        $preparingOrders = Order::with(['items.menuItem'])
+            ->where('branch_id', $currentBranchId)
+            ->where('order_status', 'preparing')
+            ->when($selectedStationId, function ($q) use ($selectedStationId) {
+                $q->whereHas('kitchenOrders', fn($kq) => $kq->where('kitchen_station_id', $selectedStationId));
+            })
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn($o) => $orderFormatter($o, 'Mark as Ready', 'green', 'ready'));
+
+        // 7. Column 3: Delayed Orders (ready, or active running > 15 mins or past estimated time)
+        $delayedOrders = Order::with(['items.menuItem'])
+            ->where('branch_id', $currentBranchId)
+            ->where(function ($q) use ($now) {
+                $q->where('order_status', 'ready')
+                  ->orWhere(function ($dq) use ($now) {
+                      $dq->whereIn('order_status', ['pending', 'accepted', 'preparing'])
+                         ->where('created_at', '<=', (clone $now)->subMinutes(15));
+                  });
+            })
+            ->when($selectedStationId, function ($q) use ($selectedStationId) {
+                $q->whereHas('kitchenOrders', fn($kq) => $kq->where('kitchen_station_id', $selectedStationId));
+            })
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn($o) => $orderFormatter($o, 'Complete', 'gray', 'completed'));
+
+        return response()->json([
+            'header' => [
+                'nearest_branch' => $branch?->name ?? 'Cloud Gate (The Bean), Chicago',
+                'branch_id' => $branch?->id ?? 1,
+                'branch_code' => $branch?->branch_code ?? 'BR-1',
+                'current_time' => $now->format('D, M d, h:i:s A'),
+                'system_status' => [
+                    'cloud' => 'Connected',
+                    'printer' => 'Connected',
+                    'terminal' => 'Connected',
+                    'is_online' => true,
+                ],
+                'user_profile' => [
+                    'name' => $authUser?->name ?? 'Alan Cattach',
+                    'role' => $authUser?->role?->name ?? ($authUser?->user_type === 'branch_admin' ? 'Branch Manager' : 'Head Chef'),
+                    'avatar_url' => $authUser?->avatar_url ?? null,
+                ],
+            ],
+            'summary_bar' => [
+                'avg_prep_time' => "{$avgPrepTimeMins}m 30s",
+                'active_orders' => $activeOrdersCount,
+                'delayed_orders' => $delayedOrdersCount,
+            ],
+            'station_pills' => [
+                'all_station' => [
+                    'title' => 'All Station',
+                    'count' => $activeOrdersCount,
+                    'is_selected' => empty($selectedStationId),
+                ],
+                'stations' => $stationsList,
+            ],
+            'columns' => [
+                'new_orders' => [
+                    'title' => 'New Orders',
+                    'count' => $newOrders->count(),
+                    'orders' => $newOrders,
+                ],
+                'preparing' => [
+                    'title' => 'Preparing',
+                    'count' => $preparingOrders->count(),
+                    'orders' => $preparingOrders,
+                ],
+                'delayed' => [
+                    'title' => 'Delayed:',
+                    'count' => $delayedOrders->count(),
+                    'orders' => $delayedOrders,
+                ],
+            ],
+        ]);
+    }
+
+    /**
      * Get Staff Management Panel metrics dynamically.
      */
     public function staffOverview(Request $request)

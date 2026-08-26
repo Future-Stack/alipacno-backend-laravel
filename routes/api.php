@@ -153,6 +153,21 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/hq/crm', [DashboardController::class, 'crmOverview']);
     Route::get('dashboard/crm-management', [DashboardController::class, 'crmOverview']);
 
+    // Income Reports & Analytics (Branch & HQ)
+    Route::get('dashboard/branch/income-reports', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/income-reports', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/reports/income-analytics', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/income-analytics', [DashboardController::class, 'incomeReports']);
+
+    // KDS Overview & Chef Dashboard (Station Tracking & Live Orders)
+    Route::get('dashboard/kds-overview', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/branch/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef-overview', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('kds/overview', [DashboardController::class, 'kdsOverview']);
+
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints
