@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\NewDeliveryBroadcastEvent;
 use App\Events\OrderAcceptedBroadcastEvent;
+use App\Events\OrderStatusUpdatedBroadcastEvent;
 use App\Models\Branch;
 use App\Models\Cart;
 use App\Models\Delivery;
@@ -44,8 +45,20 @@ class OrderController extends Controller
             'payment',
         ]);
 
+        $authUser = $request->user();
+
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
+        } elseif ($authUser && $authUser->hasRole(['Branch Manager', 'Cashier', 'Chef', 'Waiter', 'Delivery Driver'])) {
+            // Automatically detect branch from authenticated staff/manager role
+            $userBranchId = $authUser->branch_id 
+                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
+                ?? $authUser->driver?->branch_id;
+
+            if ($userBranchId) {
+                $query->where('branch_id', $userBranchId);
+            }
         }
 
         if ($request->filled('order_status')) {
@@ -66,8 +79,8 @@ class OrderController extends Controller
             $query->where('assigned_driver_id', $request->assigned_driver_id);
         }
 
-        if ($request->user() && $request->user()->isCustomer()) {
-            $query->where('user_id', $request->user()->id);
+        if ($authUser && $authUser->hasRole('Customer')) {
+            $query->where('user_id', $authUser->id);
         }
 
         if ($request->filled('search')) {
@@ -352,6 +365,15 @@ class OrderController extends Controller
                 }
             }
 
+            // 3. Broadcast real-time order creation to Branch Admin / Next.js Kanban Board (all order types)
+            if ($order->branch_id) {
+                try {
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'created'));
+                } catch (\Exception $e) {
+                    Log::error('Order Created Broadcast Error: ' . $e->getMessage());
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Order placed Successfully',
@@ -372,8 +394,15 @@ class OrderController extends Controller
     /**
      * Display the specified order.
      */
-    public function show(Order $order)
+    public function show(Request $request, Order $order)
     {
+        $user = $request->user();
+
+        // Customer can only view their own order
+        if ($user && $user->isCustomer() && $order->user_id && $order->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized access to this order.'], 403);
+        }
+
         return response()->json($order->load([
             'items.menuItem',
             'items.size',
@@ -488,6 +517,15 @@ class OrderController extends Controller
             }
         }
 
+        // Broadcast real-time order update to Branch Admin / Next.js Kanban Board
+        if ($order->branch_id) {
+            try {
+                broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'updated'));
+            } catch (\Exception $e) {
+                Log::error('Order Update Broadcast Error: ' . $e->getMessage());
+            }
+        }
+
         return response()->json($order->load([
             'items.menuItem',
             'items.size',
@@ -597,6 +635,15 @@ class OrderController extends Controller
                 broadcast(new OrderAcceptedBroadcastEvent($order, $driver));
             } catch (\Exception $e) {
                 Log::error('Admin Order Assigned Broadcast Error: ' . $e->getMessage());
+            }
+
+            // 7. Broadcast real-time order update to Branch Admin / Next.js Kanban Board
+            if ($order->branch_id) {
+                try {
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'assigned'));
+                } catch (\Exception $e) {
+                    Log::error('Order Assigned Broadcast Error: ' . $e->getMessage());
+                }
             }
 
             return response()->json([
