@@ -33,10 +33,21 @@ class KitchenOrderController extends Controller
             $query->whereIn('status', ['pending', 'preparing', 'ready']);
         }
 
+        $authUser = $request->user() ?? auth('sanctum')->user();
+
         if ($request->filled('branch_id')) {
             $query->whereHas('order', function ($q) use ($request) {
                 $q->where('branch_id', $request->branch_id);
             });
+        } elseif ($authUser && $authUser->hasRole(['branch_admin', 'cashier', 'chef', 'waiter', 'staff', 'Branch Manager', 'Chef'])) {
+            $userBranchId = $authUser->branch_id 
+                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id');
+            if ($userBranchId) {
+                $query->whereHas('order', function ($q) use ($userBranchId) {
+                    $q->where('branch_id', $userBranchId);
+                });
+            }
         }
 
         $query->orderBy('created_at', 'asc');
