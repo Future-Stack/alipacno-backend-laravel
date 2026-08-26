@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderStatusUpdatedBroadcastEvent;
 use App\Models\Delivery;
 use App\Models\Driver;
 use App\Models\Notification;
@@ -171,6 +172,15 @@ class DeliveryController extends Controller
         }
 
         $delivery->update($validated);
+
+        // Broadcast real-time order update to Branch Kanban Board
+        if ($delivery->order && $delivery->order->branch_id) {
+            try {
+                broadcast(new OrderStatusUpdatedBroadcastEvent($delivery->order->fresh(), 'delivery_status_updated'));
+            } catch (\Exception $e) {
+                Log::error('Delivery Order Status Broadcast Error: ' . $e->getMessage());
+            }
+        }
 
         return response()->json($delivery->load(['order', 'driver']));
     }

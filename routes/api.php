@@ -118,7 +118,11 @@ Route::prefix('v1')->group(function () {
 
     // Executive & Operational Dashboard Endpoints
     Route::get('dashboard/hq-overview', [DashboardController::class, 'hqOverview']);
+    Route::get('dashboard/earnings-analytics', [DashboardController::class, 'earningsAnalytics']);
+    Route::get('dashboard/earnings', [DashboardController::class, 'earningsAnalytics']);
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 

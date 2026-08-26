@@ -47,3 +47,16 @@ Broadcast::channel('branch.{branchId}.drivers', function ($user, $branchId) {
 
     return false;
 });
+
+Broadcast::channel('branch.{branchId}.orders', function ($user, $branchId) {
+    // Admin, HQ Admin, Branch Admin, and Staff can listen to all real-time order updates of their branch
+    if ($user->hasRole(['super_admin', 'hq_admin'])) {
+        return true;
+    }
+
+    if ($user->hasRole(['branch_admin', 'staff', 'manager'])) {
+        return true;
+    }
+
+    return false;
+});
