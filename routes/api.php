@@ -118,11 +118,29 @@ Route::prefix('v1')->group(function () {
 
     // Executive & Operational Dashboard Endpoints
     Route::get('dashboard/hq-overview', [DashboardController::class, 'hqOverview']);
+    Route::get('dashboard/branch-overview', [DashboardController::class, 'branchOverview']);
+    Route::get('dashboard/branch-dashboard', [DashboardController::class, 'branchOverview']);
+    Route::get('dashboard/branch', [DashboardController::class, 'branchOverview']);
     Route::get('dashboard/earnings-analytics', [DashboardController::class, 'earningsAnalytics']);
     Route::get('dashboard/earnings', [DashboardController::class, 'earningsAnalytics']);
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
+
+    // Super Admin / HQ Deliveries Management (Global across all branches)
+    Route::get('dashboard/hq/deliveries', [DashboardController::class, 'hqDeliveries']);
+    Route::get('dashboard/hq/deliveries-management', [DashboardController::class, 'hqDeliveries']);
+    Route::get('dashboard/hq-deliveries', [DashboardController::class, 'hqDeliveries']);
+
+    // Branch Admin / Manager Deliveries Management (Scoped strictly to specific Branch)
+    Route::get('dashboard/branch/deliveries', [DashboardController::class, 'branchDeliveries']);
+    Route::get('dashboard/branch/deliveries-management', [DashboardController::class, 'branchDeliveries']);
+    Route::get('dashboard/branch-deliveries', [DashboardController::class, 'branchDeliveries']);
+
+    // Universal / Auto-detecting Deliveries Route
+    Route::get('dashboard/deliveries-management', [DashboardController::class, 'deliveriesManagement']);
+    Route::get('dashboard/deliveries', [DashboardController::class, 'deliveriesManagement']);
+
     Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
