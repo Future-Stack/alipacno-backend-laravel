@@ -166,6 +166,11 @@ class User extends Authenticatable
         return $this->hasMany(TableReservation::class);
     }
 
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class);
+    }
+
     // Role & Permission Checks
     public function hasRole($roles): bool
     {
