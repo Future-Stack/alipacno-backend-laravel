@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('branch_id');
             $table->string('name');
             $table->text('description')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

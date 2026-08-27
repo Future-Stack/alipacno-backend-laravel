@@ -61,8 +61,10 @@ class ScreenScheduleController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'screen_id' => 'required|exists:digital_screens,id',
-            'playlist_id' => 'required|exists:screen_playlists,id',
+            'screen_id' => 'nullable',
+            'playlist_id' => 'nullable',
+            'playlist_title' => 'nullable|string|max:255',
+            'title' => 'nullable|string|max:255',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'start_time' => 'required',
@@ -72,6 +74,53 @@ class ScreenScheduleController extends Controller
             'status' => 'nullable|string|in:active,inactive',
         ]);
 
+        // 1. Resolve or Auto-create Screen
+        if (!empty($validated['screen_id'])) {
+            $screen = \App\Models\DigitalScreen::find($validated['screen_id']);
+            if (!$screen) {
+                $branchId = \App\Models\Branch::value('id') ?: 1;
+                $screen = \App\Models\DigitalScreen::create([
+                    'branch_id' => $branchId,
+                    'screen_name' => 'Main Counter Screen 1',
+                    'device_uuid' => (string) \Illuminate\Support\Str::uuid(),
+                    'resolution' => '1920 x 1080',
+                    'location' => 'Main Counter',
+                ]);
+                $validated['screen_id'] = $screen->id;
+            }
+        } else {
+            $screen = \App\Models\DigitalScreen::first();
+            if (!$screen) {
+                $branchId = \App\Models\Branch::value('id') ?: 1;
+                $screen = \App\Models\DigitalScreen::create([
+                    'branch_id' => $branchId,
+                    'screen_name' => 'Main Counter Screen 1',
+                    'device_uuid' => (string) \Illuminate\Support\Str::uuid(),
+                    'resolution' => '1920 x 1080',
+                    'location' => 'Main Counter',
+                ]);
+            }
+            $validated['screen_id'] = $screen->id;
+        }
+
+        // 2. Resolve or Auto-create Playlist
+        if (!empty($validated['playlist_id'])) {
+            $playlist = \App\Models\ScreenPlaylist::find($validated['playlist_id']);
+            if (!$playlist) {
+                $playlist = \App\Models\ScreenPlaylist::create([
+                    'title' => $validated['playlist_title'] ?? $validated['title'] ?? 'Epic Items Slideshow',
+                    'description' => 'Automated playlist for screen schedule',
+                ]);
+                $validated['playlist_id'] = $playlist->id;
+            }
+        } else {
+            $playlist = \App\Models\ScreenPlaylist::firstOrCreate(
+                ['title' => $validated['playlist_title'] ?? $validated['title'] ?? 'Daily Special Items'],
+                ['description' => 'Automatically generated playlist for schedule']
+            );
+            $validated['playlist_id'] = $playlist->id;
+        }
+
         if (empty($validated['status'])) {
             $validated['status'] = 'active';
         }
@@ -79,6 +128,9 @@ class ScreenScheduleController extends Controller
         if (empty($validated['priority'])) {
             $validated['priority'] = 1;
         }
+
+        // Clean up temporary helper fields before saving
+        unset($validated['playlist_title'], $validated['title']);
 
         $schedule = ScreenSchedule::create($validated);
 

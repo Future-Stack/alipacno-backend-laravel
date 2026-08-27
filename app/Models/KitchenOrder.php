@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class KitchenOrder extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'kitchen_orders';
 
@@ -20,6 +21,16 @@ class KitchenOrder extends Model
 
     public function station()
     {
-        return $this->belongsTo(KitchenStation::class);
+        return $this->belongsTo(KitchenStation::class, 'kitchen_station_id');
+    }
+
+    public function kitchenStation()
+    {
+        return $this->belongsTo(KitchenStation::class, 'kitchen_station_id');
+    }
+
+    public function chef()
+    {
+        return $this->belongsTo(User::class, 'chef_id');
     }
 }

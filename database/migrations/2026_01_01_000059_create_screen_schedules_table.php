@@ -22,6 +22,7 @@ return new class extends Migration
             $table->string('repeat_type')->nullable();
             $table->integer('priority')->default(1);
             $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->softDeletes();
             $table->timestamps();
         });
     }

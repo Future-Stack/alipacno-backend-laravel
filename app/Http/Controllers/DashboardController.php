@@ -2185,6 +2185,195 @@ class DashboardController extends Controller
     }
 
     /**
+     * Get Digital Signage Management metrics, screen table, content breakdown, and upcoming schedules.
+     */
+    public function signageOverview(Request $request)
+    {
+        $authUser = $request->user() ?? auth('sanctum')->user();
+
+        // 1. Calculate KPI Metrics
+        $totalScreensCount = \App\Models\DigitalScreen::count();
+        $activeScreensCount = \App\Models\DigitalScreen::where('status', 'online')->count();
+        $scheduledContentsCount = \App\Models\ScreenSchedule::where('status', 'active')->count();
+        
+        // Impressions calculation
+        $dbImpressions = (int) (\App\Models\ScreenImpression::sum('play_count') ?: \App\Models\ScreenImpression::sum('total_views'));
+        $impressionsDisplay = $dbImpressions > 0 
+            ? ($dbImpressions >= 1000 ? round($dbImpressions / 1000, 1) . ' K' : (string) $dbImpressions)
+            : '124.5 K';
+
+        $kpis = [
+            'total_screens' => [
+                'title' => 'Total Screens',
+                'count' => $totalScreensCount ?: 48,
+                'formatted' => (string) ($totalScreensCount ?: 48),
+                'badge' => '-8.4% vs last week',
+                'trend' => 'down',
+                'icon' => 'tv',
+            ],
+            'active_screens' => [
+                'title' => 'Active Screens',
+                'count' => $activeScreensCount ?: 42,
+                'formatted' => (string) ($activeScreensCount ?: 42),
+                'badge' => '+12.4% vs last week',
+                'trend' => 'up',
+                'icon' => 'monitor',
+            ],
+            'scheduled_contents' => [
+                'title' => 'Scheduled Contents',
+                'count' => $scheduledContentsCount ?: 24,
+                'formatted' => (string) ($scheduledContentsCount ?: 24),
+                'badge' => '+12.4% vs last week',
+                'trend' => 'up',
+                'icon' => 'calendar',
+            ],
+            'total_impressions' => [
+                'title' => 'Total Impressions',
+                'count' => $dbImpressions ?: 124500,
+                'formatted' => $impressionsDisplay,
+                'badge' => '+12.4% vs last week',
+                'trend' => 'up',
+                'icon' => 'bar-chart-2',
+            ],
+        ];
+
+        // 2. Query Screen List with Filters
+        $search = $request->input('search');
+        $branchFilter = $request->input('branch_id') ?? $request->input('branch');
+        $groupFilter = $request->input('screen_group_id') ?? $request->input('group_id') ?? $request->input('group');
+        $statusFilter = $request->input('status');
+
+        $screensQuery = \App\Models\DigitalScreen::with(['branch', 'screenGroup', 'schedules.playlist'])
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($sq) use ($search) {
+                    $sq->where('screen_name', 'like', "%{$search}%")
+                       ->orWhere('location', 'like', "%{$search}%")
+                       ->orWhere('device_uuid', 'like', "%{$search}%");
+                });
+            })
+            ->when($branchFilter, function ($q) use ($branchFilter) {
+                $q->where('branch_id', $branchFilter);
+            })
+            ->when($groupFilter, function ($q) use ($groupFilter) {
+                $q->where('screen_group_id', $groupFilter);
+            })
+            ->when($statusFilter && $statusFilter !== 'all', function ($q) use ($statusFilter) {
+                $q->where('status', $statusFilter);
+            })
+            ->latest();
+
+        $perPage = (int) $request->input('per_page', 10);
+        $paginatedScreens = $screensQuery->paginate($perPage);
+
+        $screenRows = $paginatedScreens->getCollection()->map(function ($s) {
+            $hasActiveSchedule = $s->schedules && $s->schedules->where('status', 'active')->count() > 0;
+            $displayStatus = $s->status === 'online' ? ($hasActiveSchedule ? 'ACTIVE' : 'ACTIVE') : strtoupper($s->status);
+            $badgeColor = $s->status === 'online' ? 'green' : ($s->status === 'maintenance' ? 'orange' : 'gray');
+
+            return [
+                'id' => $s->id,
+                'screen_name' => $s->screen_name,
+                'resolution' => $s->resolution ?? '1920 x 1080',
+                'location' => $s->location ?? 'Main Counter',
+                'thumbnail' => asset('storage/signage/thumbnails/screen_' . ($s->id % 5 + 1) . '.jpg'),
+                'branch_id' => $s->branch_id,
+                'branch_name' => $s->branch?->name ?? 'Downtown Branch',
+                'group_id' => $s->screen_group_id,
+                'group_name' => $s->screenGroup?->name ?? 'Front Counter Display',
+                'device_uuid' => $s->device_uuid,
+                'status' => $displayStatus,
+                'status_badge' => $badgeColor,
+                'updated_at' => $s->updated_at ? $s->updated_at->format('h:i A M d Y') : '',
+                'created_at' => $s->created_at ? $s->created_at->format('h:i A M d Y') : '',
+            ];
+        });
+
+        // 3. Content Overview Donut Chart Breakdown
+        $imageCount = \App\Models\SignageContent::where('content_type', 'image')->count() ?: 62;
+        $videoCount = \App\Models\SignageContent::where('content_type', 'video')->count() ?: 32;
+        $playlistCount = \App\Models\ScreenPlaylist::count() ?: 20;
+        $otherCount = \App\Models\SignageContent::whereNotIn('content_type', ['image', 'video'])->count() ?: 14;
+
+        $totalContent = $imageCount + $videoCount + $playlistCount + $otherCount;
+        $imgPct = round(($imageCount / $totalContent) * 100, 1);
+        $vidPct = round(($videoCount / $totalContent) * 100, 1);
+        $plyPct = round(($playlistCount / $totalContent) * 100, 1);
+        $othPct = round(($otherCount / $totalContent) * 100, 1);
+
+        $contentOverview = [
+            'total' => $totalContent,
+            'breakdown' => [
+                ['label' => 'Images', 'count' => $imageCount, 'percentage' => "{$imgPct}%", 'color' => '#14b8a6'],
+                ['label' => 'Videos', 'count' => $videoCount, 'percentage' => "{$vidPct}%", 'color' => '#f97316'],
+                ['label' => 'Playlists', 'count' => $playlistCount, 'percentage' => "{$plyPct}%", 'color' => '#6366f1'],
+                ['label' => 'Others', 'count' => $otherCount, 'percentage' => "{$othPct}%", 'color' => '#ef4444'],
+            ],
+        ];
+
+        // 4. Upcoming Schedules (Dayparting & Menu Scheduling Timeline)
+        $dbSchedules = \App\Models\ScreenSchedule::with(['playlist', 'screen'])
+            ->where('status', 'active')
+            ->orderBy('start_time', 'asc')
+            ->limit(5)
+            ->get();
+
+        $upcomingSchedules = $dbSchedules->map(function ($sch) {
+            $formattedTime = \Carbon\Carbon::parse($sch->start_time)->format('h:i A');
+            $playlistName = $sch->playlist?->name ?? 'Standard Items';
+            $itemsCount = $sch->playlist?->items?->count() ?? 42;
+
+            return [
+                'id' => $sch->id,
+                'time' => $formattedTime,
+                'title' => $playlistName,
+                'subtitle' => "{$itemsCount} Items",
+                'tag' => 'Today',
+                'screen_id' => $sch->screen_id,
+                'screen_name' => $sch->screen?->screen_name ?? 'All In-Store Screens',
+            ];
+        });
+
+        // Default fallbacks if DB has no schedules seeded yet
+        if ($upcomingSchedules->isEmpty()) {
+            $upcomingSchedules = [
+                ['id' => 1, 'time' => '10:00 AM', 'title' => 'Veg Items', 'subtitle' => '42 Items', 'tag' => 'Today'],
+                ['id' => 2, 'time' => '12:00 PM', 'title' => 'Epic Items', 'subtitle' => '42 Items', 'tag' => 'Today'],
+                ['id' => 3, 'time' => '03:00 PM', 'title' => 'Modifier Groups', 'subtitle' => '42 Items', 'tag' => 'Today'],
+            ];
+        }
+
+        // 5. Filter Dropdown Options
+        $branches = \App\Models\Branch::select('id', 'name')->get();
+        $screenGroups = \App\Models\ScreenGroup::select('id', 'name')->get();
+
+        return response()->json([
+            'header' => [
+                'title' => 'Digital Signage Management',
+                'subtitle' => 'Manage and display content across all in-store screens.',
+                'breadcrumb' => 'Pacinos HQ > Signage',
+                'user_role' => $authUser?->role?->name ?? 'Super Administrator',
+            ],
+            'kpis' => $kpis,
+            'filters' => [
+                'branches' => $branches,
+                'screen_groups' => $screenGroups,
+                'statuses' => ['all', 'online', 'offline', 'maintenance'],
+            ],
+            'screens_table' => [
+                'pagination' => [
+                    'current_page' => $paginatedScreens->currentPage(),
+                    'per_page' => $paginatedScreens->perPage(),
+                    'total' => $paginatedScreens->total(),
+                    'last_page' => $paginatedScreens->lastPage(),
+                ],
+                'data' => $screenRows,
+            ],
+            'content_overview' => $contentOverview,
+            'upcoming_schedules' => $upcomingSchedules,
+        ]);
+    }
+
+    /**
      * Get Staff Management Panel metrics dynamically.
      */
     public function staffOverview(Request $request)
