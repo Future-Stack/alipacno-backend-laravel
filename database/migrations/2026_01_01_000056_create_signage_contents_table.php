@@ -14,11 +14,18 @@ return new class extends Migration
         Schema::create('signage_contents', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->string('content_type');
+            $table->string('content_name')->nullable();
+            $table->string('content_type')->default('image'); // image, video, playlist
+            $table->string('campaign_tag')->nullable();
+            $table->text('description')->nullable();
             $table->string('file');
             $table->string('thumbnail')->nullable();
-            $table->integer('duration')->default(10);
-            $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->string('resolution')->nullable();
+            $table->string('file_size')->nullable();
+            $table->string('dimensions')->nullable();
+            $table->string('aspect_ratio')->nullable();
+            $table->integer('duration')->default(15);
+            $table->enum('status', ['active', 'inactive', 'draft', 'scheduled'])->default('active');
             $table->softDeletes();
             $table->timestamps();
         });
