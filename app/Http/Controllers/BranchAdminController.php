@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\BranchAdmin;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class BranchAdminController extends Controller
 {
@@ -12,7 +15,7 @@ class BranchAdminController extends Controller
      */
     public function index(Request $request)
     {
-        $query = BranchAdmin::with('branch');
+        $query = BranchAdmin::with(['branch', 'user']);
 
         if ($request->filled('branch_id')) {
             $query->forBranch($request->branch_id);
@@ -62,9 +65,31 @@ class BranchAdminController extends Controller
             $validated['status'] = 'active';
         }
 
+        $passwordHash = Hash::make($validated['password']);
+
+        // Find 'Branch Manager' role if present
+        $role = Role::where('name', 'Branch Manager')->first();
+
+        // Create or update linked User account for unified authentication
+        $user = User::updateOrCreate(
+            ['email' => $validated['email']],
+            [
+                'name' => $validated['name'],
+                'phone' => $validated['phone'] ?? null,
+                'password' => $passwordHash,
+                'user_type' => 'branch_admin',
+                'role_id' => $role?->id,
+                'status' => $validated['status'],
+                'email_verified_at' => now(),
+            ]
+        );
+
+        $validated['user_id'] = $user->id;
+        $validated['password'] = $passwordHash;
+
         $admin = BranchAdmin::create($validated);
 
-        return response()->json($admin->load('branch'), 201);
+        return response()->json($admin->load(['branch', 'user']), 201);
     }
 
     /**
@@ -72,7 +97,7 @@ class BranchAdminController extends Controller
      */
     public function show(BranchAdmin $branchAdmin)
     {
-        return response()->json($branchAdmin->load('branch'));
+        return response()->json($branchAdmin->load(['branch', 'user']));
     }
 
     /**
@@ -90,13 +115,30 @@ class BranchAdminController extends Controller
             'status' => 'sometimes|required|string|in:active,inactive',
         ]);
 
-        if (empty($validated['password'])) {
+        if (!empty($validated['password'])) {
+            $validated['password'] = Hash::make($validated['password']);
+        } else {
             unset($validated['password']);
         }
 
         $branchAdmin->update($validated);
 
-        return response()->json($branchAdmin->load('branch'));
+        if ($branchAdmin->user_id) {
+            $userUpdateData = array_filter([
+                'name' => $validated['name'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+                'status' => $validated['status'] ?? null,
+            ]);
+            if (!empty($validated['password'])) {
+                $userUpdateData['password'] = $validated['password'];
+            }
+            if (!empty($userUpdateData)) {
+                User::where('id', $branchAdmin->user_id)->update($userUpdateData);
+            }
+        }
+
+        return response()->json($branchAdmin->load(['branch', 'user']));
     }
 
     /**
@@ -104,6 +146,10 @@ class BranchAdminController extends Controller
      */
     public function destroy(BranchAdmin $branchAdmin)
     {
+        if ($branchAdmin->user_id) {
+            User::where('id', $branchAdmin->user_id)->delete();
+        }
+
         $branchAdmin->delete();
 
         return response()->json(null, 204);
@@ -117,10 +163,14 @@ class BranchAdminController extends Controller
         $newStatus = $branchAdmin->status === 'active' ? 'inactive' : 'active';
         $branchAdmin->update(['status' => $newStatus]);
 
+        if ($branchAdmin->user_id) {
+            User::where('id', $branchAdmin->user_id)->update(['status' => $newStatus]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => "Branch admin status changed to {$newStatus}.",
-            'data' => $branchAdmin->load('branch'),
+            'data' => $branchAdmin->load(['branch', 'user']),
         ]);
     }
 }
