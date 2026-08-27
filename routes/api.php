@@ -175,6 +175,8 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/campaigns-hub', [DashboardController::class, 'marketingOverview']);
     Route::post('dashboard/marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
     Route::post('marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
+    Route::get('marketing/flows/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
+    Route::get('marketing/create-flow/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
 
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
