@@ -15,8 +15,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('campaign_id');
             $table->foreignId('user_id');
-            $table->enum('status', ['pending', 'sent', 'failed'])->default('pending');
+            $table->enum('status', ['pending', 'sent', 'delivered', 'failed', 'opened', 'clicked'])->default('pending');
             $table->timestamp('sent_at')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

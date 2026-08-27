@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('playlist_id');
             $table->foreignId('signage_content_id');
             $table->integer('sort_order')->default(0);
+            $table->softDeletes();
             $table->timestamps();
         });
     }

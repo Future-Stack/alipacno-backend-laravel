@@ -118,12 +118,75 @@ Route::prefix('v1')->group(function () {
 
     // Executive & Operational Dashboard Endpoints
     Route::get('dashboard/hq-overview', [DashboardController::class, 'hqOverview']);
+    Route::get('dashboard/branch-overview', [DashboardController::class, 'branchOverview']);
+    Route::get('dashboard/branch-dashboard', [DashboardController::class, 'branchOverview']);
+    Route::get('dashboard/branch', [DashboardController::class, 'branchOverview']);
     Route::get('dashboard/earnings-analytics', [DashboardController::class, 'earningsAnalytics']);
     Route::get('dashboard/earnings', [DashboardController::class, 'earningsAnalytics']);
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
+
+    // Super Admin / HQ Deliveries Management (Global across all branches)
+    Route::get('dashboard/hq/deliveries', [DashboardController::class, 'hqDeliveries']);
+    Route::get('dashboard/hq/deliveries-management', [DashboardController::class, 'hqDeliveries']);
+    Route::get('dashboard/hq-deliveries', [DashboardController::class, 'hqDeliveries']);
+
+    // Branch Admin / Manager Deliveries Management (Scoped strictly to specific Branch)
+    Route::get('dashboard/branch/deliveries', [DashboardController::class, 'branchDeliveries']);
+    Route::get('dashboard/branch/deliveries-management', [DashboardController::class, 'branchDeliveries']);
+    Route::get('dashboard/branch-deliveries', [DashboardController::class, 'branchDeliveries']);
+
+    // Universal / Auto-detecting Deliveries Route
+    Route::get('dashboard/deliveries-management', [DashboardController::class, 'deliveriesManagement']);
+    Route::get('dashboard/deliveries', [DashboardController::class, 'deliveriesManagement']);
+
+    // Super Admin / HQ Drivers Management (Global across all branches)
+    Route::get('dashboard/hq/drivers', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/hq/drivers-management', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/hq-drivers', [DashboardController::class, 'hqDrivers']);
+    Route::get('dashboard/drivers-management', [DashboardController::class, 'hqDrivers']);
+
+    // Super Admin CRM Management
     Route::get('dashboard/crm-overview', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/crm', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/hq/crm', [DashboardController::class, 'crmOverview']);
+    Route::get('dashboard/crm-management', [DashboardController::class, 'crmOverview']);
+
+    // Income Reports & Analytics (Branch & HQ)
+    Route::get('dashboard/branch/income-reports', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/income-reports', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/reports/income-analytics', [DashboardController::class, 'incomeReports']);
+    Route::get('dashboard/income-analytics', [DashboardController::class, 'incomeReports']);
+
+    // KDS Overview & Chef Dashboard (Station Tracking & Live Orders)
+    Route::get('dashboard/kds-overview', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/branch/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef-overview', [DashboardController::class, 'kdsOverview']);
+    Route::get('dashboard/chef/kds', [DashboardController::class, 'kdsOverview']);
+    Route::get('kds/overview', [DashboardController::class, 'kdsOverview']);
+
+    // Super Admin Marketing Campaign Hub & Communications
+    Route::get('dashboard/marketing-overview', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/marketing', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/hq/marketing', [DashboardController::class, 'marketingOverview']);
+    Route::get('dashboard/campaigns-hub', [DashboardController::class, 'marketingOverview']);
+    Route::post('dashboard/marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
+    Route::post('marketing/create-flow', [CampaignAutomationFlowController::class, 'store']);
+    Route::get('marketing/flows/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
+    Route::get('marketing/create-flow/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
+
+    // Super Admin Digital Signage Hub & In-Store Screens
+    Route::get('dashboard/signage-overview', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/signage', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/hq/signage', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/signage/screens/{digital_screen}', [DigitalScreenController::class, 'show']);
+    Route::get('signage/screens/{digital_screen}', [DigitalScreenController::class, 'show']);
+    Route::get('signage/groups', [ScreenGroupController::class, 'index']);
+    Route::get('signage/groups/{screen_group}', [ScreenGroupController::class, 'show']);
+
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints

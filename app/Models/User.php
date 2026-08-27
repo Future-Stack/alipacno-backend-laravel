@@ -53,7 +53,15 @@ class User extends Authenticatable
         'is_online',
         'driver_status',
         'reject_reason',
+        'branch_id',
     ];
+
+    public function getBranchIdAttribute(): ?int
+    {
+        return $this->branchAdmin?->branch_id
+            ?? $this->driver?->branch_id
+            ?? ($this->attributes['branch_id'] ?? null);
+    }
 
     public function getKycStatusAttribute(): ?string
     {
@@ -156,6 +164,11 @@ class User extends Authenticatable
     public function tableReservations()
     {
         return $this->hasMany(TableReservation::class);
+    }
+
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class);
     }
 
     // Role & Permission Checks
@@ -277,8 +290,18 @@ class User extends Authenticatable
         return $this->user_type === 'customer';
     }
 
+    public function branchAdmin(): HasOne
+    {
+        return $this->hasOne(BranchAdmin::class, 'user_id');
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
     public function driver(): HasOne
-{
-    return $this->hasOne(Driver::class);
-}
+    {
+        return $this->hasOne(Driver::class);
+    }
 }

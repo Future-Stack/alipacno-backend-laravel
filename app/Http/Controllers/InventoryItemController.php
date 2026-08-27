@@ -150,8 +150,8 @@ class InventoryItemController extends Controller
             : null;
 
         $itemIds = (clone $query)->pluck('id');
-        $valueMovedLast7Days = InventoryTransaction::whereIn('inventory_item_id', $itemIds)
-            ->where('created_at', '>=', now()->subDays(7))
+        $valueMovedLast7Days = InventoryTransaction::whereIn('inventory_transactions.inventory_item_id', $itemIds)
+            ->where('inventory_transactions.created_at', '>=', now()->subDays(7))
             ->join('inventory_items', 'inventory_items.id', '=', 'inventory_transactions.inventory_item_id')
             ->selectRaw("SUM(CASE WHEN transaction_type IN ('purchase','restock','adjustment') THEN inventory_transactions.quantity * inventory_items.purchase_price
                          WHEN transaction_type IN ('sale','waste') THEN -inventory_transactions.quantity * inventory_items.purchase_price

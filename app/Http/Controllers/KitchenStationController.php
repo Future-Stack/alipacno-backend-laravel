@@ -16,8 +16,17 @@ class KitchenStationController extends Controller
             $q->whereIn('status', ['pending', 'preparing']);
         }]);
 
+        $authUser = $request->user() ?? auth('sanctum')->user();
+
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
+        } elseif ($authUser && $authUser->hasRole(['branch_admin', 'cashier', 'chef', 'waiter', 'staff', 'Branch Manager', 'Chef'])) {
+            $userBranchId = $authUser->branch_id 
+                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id');
+            if ($userBranchId) {
+                $query->where('branch_id', $userBranchId);
+            }
         }
 
         if ($request->filled('status')) {
@@ -43,6 +52,16 @@ class KitchenStationController extends Controller
      */
     public function store(Request $request)
     {
+        $authUser = $request->user() ?? auth('sanctum')->user();
+        if (!$request->filled('branch_id') && $authUser) {
+            $userBranchId = $authUser->branch_id 
+                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id');
+            if ($userBranchId) {
+                $request->merge(['branch_id' => $userBranchId]);
+            }
+        }
+
         $validated = $request->validate([
             'branch_id' => 'required|exists:branches,id',
             'name' => 'required|string|max:255',

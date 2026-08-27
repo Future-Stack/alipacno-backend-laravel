@@ -74,7 +74,10 @@ class DigitalScreenController extends Controller
      */
     public function show(DigitalScreen $digitalScreen)
     {
-        return response()->json($digitalScreen->load(['branch', 'screenGroup']));
+        return response()->json([
+            'success' => true,
+            'data' => $digitalScreen->load(['branch', 'screenGroup', 'schedules.playlist', 'impressions']),
+        ]);
     }
 
     /**
