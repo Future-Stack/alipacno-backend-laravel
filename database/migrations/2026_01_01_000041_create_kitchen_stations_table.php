@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('description')->nullable();
             $table->integer('display_order')->default(1);
             $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->softDeletes();
             $table->timestamps();
         });
     }

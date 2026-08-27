@@ -19,6 +19,7 @@ return new class extends Migration
             $table->integer('play_count')->default(0);
             $table->integer('play_duration')->default(0);
             $table->timestamp('recorded_at');
+            $table->softDeletes();
             $table->timestamps();
         });
     }

@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DigitalScreen extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'digital_screens';
 
@@ -21,5 +22,15 @@ class DigitalScreen extends Model
     public function screenGroup()
     {
         return $this->belongsTo(ScreenGroup::class);
+    }
+
+    public function schedules()
+    {
+        return $this->hasMany(ScreenSchedule::class, 'screen_id');
+    }
+
+    public function impressions()
+    {
+        return $this->hasMany(ScreenImpression::class, 'screen_id');
     }
 }

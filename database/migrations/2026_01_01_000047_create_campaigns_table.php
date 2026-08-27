@@ -17,8 +17,10 @@ return new class extends Migration
             $table->string('type');
             $table->string('subject')->nullable();
             $table->text('message');
+            $table->string('attachment')->nullable();
             $table->enum('status', ['draft', 'scheduled', 'running', 'completed', 'cancelled'])->default('draft');
             $table->foreignId('created_by')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

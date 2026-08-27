@@ -4,14 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Campaign extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'campaigns';
 
-    protected $fillable = ['name', 'type', 'subject', 'message', 'status', 'created_by'];
+    protected $fillable = ['name', 'type', 'subject', 'message', 'attachment', 'status', 'created_by'];
 
     public function creator()
     {
