@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SignageContent extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'signage_contents';
 
@@ -16,6 +17,28 @@ class SignageContent extends Model
     protected $casts = [
         'duration' => 'integer',
     ];
+
+    protected $appends = ['file_url', 'thumbnail_url'];
+
+    public function getFileUrlAttribute(): ?string
+    {
+        if (!$this->file) {
+            return null;
+        }
+        return str_starts_with($this->file, 'http') || str_starts_with($this->file, '/')
+            ? $this->file
+            : asset('storage/' . $this->file);
+    }
+
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        if (!$this->thumbnail) {
+            return $this->content_type === 'image' ? $this->file_url : null;
+        }
+        return str_starts_with($this->thumbnail, 'http') || str_starts_with($this->thumbnail, '/')
+            ? $this->thumbnail
+            : asset('storage/' . $this->thumbnail);
+    }
 
     public function playlistItems()
     {

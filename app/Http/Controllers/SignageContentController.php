@@ -50,12 +50,57 @@ class SignageContentController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'content_type' => 'required|string|max:50',
-            'file' => 'required|string|max:1000',
-            'thumbnail' => 'nullable|string|max:1000',
+            'content_type' => 'nullable',
+            'file' => 'required',
+            'thumbnail' => 'nullable',
             'duration' => 'nullable|integer|min:1',
             'status' => 'nullable|string|in:active,inactive',
         ]);
+
+        // Handle case where user uploaded an image file into content_type field
+        if ($request->hasFile('content_type')) {
+            $uploadedThumb = $request->file('content_type');
+            $mime = $uploadedThumb->getMimeType();
+            $thumbPath = $uploadedThumb->store('signage/thumbnails', 'public');
+            $validated['thumbnail'] = $thumbPath;
+            $validated['content_type'] = str_starts_with($mime, 'video/') ? 'video' : 'image';
+        }
+
+        // 1. Handle Content File (Physical Upload or URL String)
+        if ($request->hasFile('file')) {
+            $uploadedFile = $request->file('file');
+            $mime = $uploadedFile->getMimeType();
+            $path = $uploadedFile->store('signage/contents', 'public');
+            $validated['file'] = $path;
+
+            // Auto-detect content_type if not explicitly provided
+            if (empty($validated['content_type'])) {
+                if (str_starts_with($mime, 'image/')) {
+                    $validated['content_type'] = 'image';
+                } elseif (str_starts_with($mime, 'video/')) {
+                    $validated['content_type'] = 'video';
+                } else {
+                    $validated['content_type'] = 'image';
+                }
+            }
+        } elseif (is_string($request->input('file'))) {
+            $validated['file'] = $request->input('file');
+            if (empty($validated['content_type'])) {
+                $ext = strtolower(pathinfo($validated['file'], PATHINFO_EXTENSION));
+                $validated['content_type'] = in_array($ext, ['mp4', 'mov', 'avi', 'mkv', 'webm']) ? 'video' : 'image';
+            }
+        }
+
+        // 2. Handle Thumbnail File
+        if ($request->hasFile('thumbnail')) {
+            $validated['thumbnail'] = $request->file('thumbnail')->store('signage/thumbnails', 'public');
+        } elseif (is_string($request->input('thumbnail'))) {
+            $validated['thumbnail'] = $request->input('thumbnail');
+        }
+
+        if (empty($validated['content_type'])) {
+            $validated['content_type'] = 'image';
+        }
 
         if (empty($validated['status'])) {
             $validated['status'] = 'active';
@@ -85,12 +130,26 @@ class SignageContentController extends Controller
     {
         $validated = $request->validate([
             'title' => 'sometimes|required|string|max:255',
-            'content_type' => 'sometimes|required|string|max:50',
-            'file' => 'sometimes|required|string|max:1000',
-            'thumbnail' => 'nullable|string|max:1000',
+            'content_type' => 'nullable|string|max:50',
+            'file' => 'nullable',
+            'thumbnail' => 'nullable',
             'duration' => 'nullable|integer|min:1',
             'status' => 'sometimes|required|string|in:active,inactive',
         ]);
+
+        if ($request->hasFile('file')) {
+            $uploadedFile = $request->file('file');
+            $mime = $uploadedFile->getMimeType();
+            $validated['file'] = $uploadedFile->store('signage/contents', 'public');
+
+            if (empty($validated['content_type'])) {
+                $validated['content_type'] = str_starts_with($mime, 'video/') ? 'video' : 'image';
+            }
+        }
+
+        if ($request->hasFile('thumbnail')) {
+            $validated['thumbnail'] = $request->file('thumbnail')->store('signage/thumbnails', 'public');
+        }
 
         $signageContent->update($validated);
 

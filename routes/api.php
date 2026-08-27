@@ -178,6 +178,15 @@ Route::prefix('v1')->group(function () {
     Route::get('marketing/flows/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
     Route::get('marketing/create-flow/{campaign_automation_flow}', [CampaignAutomationFlowController::class, 'show']);
 
+    // Super Admin Digital Signage Hub & In-Store Screens
+    Route::get('dashboard/signage-overview', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/signage', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/hq/signage', [DashboardController::class, 'signageOverview']);
+    Route::get('dashboard/signage/screens/{digital_screen}', [DigitalScreenController::class, 'show']);
+    Route::get('signage/screens/{digital_screen}', [DigitalScreenController::class, 'show']);
+    Route::get('signage/groups', [ScreenGroupController::class, 'index']);
+    Route::get('signage/groups/{screen_group}', [ScreenGroupController::class, 'show']);
+
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
     // Public Authentication & OTP Endpoints

@@ -21,6 +21,7 @@ return new class extends Migration
             $table->string('location')->nullable();
             $table->enum('status', ['online', 'offline', 'maintenance'])->default('online');
             $table->timestamp('last_sync')->nullable();
+            $table->softDeletes();
             $table->timestamps();
         });
     }
