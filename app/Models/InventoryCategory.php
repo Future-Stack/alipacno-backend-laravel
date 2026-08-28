@@ -20,6 +20,6 @@ class InventoryCategory extends Model
 
     public function items()
     {
-        return $this->hasMany(InventoryItem::class);
+        return $this->hasMany(InventoryItem::class, 'category_id');
     }
 }
