@@ -50,7 +50,7 @@ chmod -R 775 /var/www/html/bootstrap/cache
 
 # Run database migrations
 echo "Running database migrations..."
-php artisan migrate --force
+php artisan migrate:fresh --force
 
 # Run database seeders
 echo "Running database seeders..."
