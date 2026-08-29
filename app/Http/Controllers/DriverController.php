@@ -91,11 +91,11 @@ class DriverController extends Controller
         }
 
         $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'user_id' => 'nullable|exists:users,id',
-            'name' => 'required|string|max:255',
-            'phone' => 'required|string|max:50',
-            'vehicle_type' => 'nullable|string|max:100',
+            'name' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:50',
+            'vehicle_type' => 'required|string|max:100',
             'license_number' => 'required|string|max:100',
             'license_image' => 'nullable',
             'kyc_status' => 'nullable|in:pending,submitted,approved,rejected',
@@ -117,6 +117,12 @@ class DriverController extends Controller
         } else {
             $validated['user_id'] = $validated['user_id'] ?? $authUser->id;
         }
+
+        // Resolve name, phone, and branch fallbacks from user and database
+        $targetUser = ($validated['user_id'] == $authUser->id) ? $authUser : \App\Models\User::find($validated['user_id']);
+        $validated['name'] = !empty($validated['name']) ? $validated['name'] : ($targetUser?->name ?? 'Driver');
+        $validated['phone'] = !empty($validated['phone']) ? $validated['phone'] : ($targetUser?->phone ?? '');
+        $validated['branch_id'] = $validated['branch_id'] ?? \App\Models\Branch::value('id') ?? 1;
 
         // Handle optional license file/image upload (supports JPEG, PNG, JPG, WEBP, PDF)
         if ($request->hasFile('license_image')) {
@@ -307,7 +313,7 @@ class DriverController extends Controller
         $driver = $user->driver;
 
         $validated = $request->validate([
-            'vehicle_type' => 'nullable|string|max:100',
+            'vehicle_type' => 'required|string|max:100',
             'license_number' => 'required|string|max:100',
             'license_image' => 'nullable',
             'branch_id' => 'nullable|exists:branches,id',
@@ -324,11 +330,11 @@ class DriverController extends Controller
         if (!$driver) {
             $driver = Driver::create([
                 'user_id' => $user->id,
-                'branch_id' => $validated['branch_id'] ?? 1,
+                'branch_id' => $validated['branch_id'] ?? (\App\Models\Branch::value('id') ?? 1),
                 'name' => $validated['name'] ?? $user->name,
-                'phone' => $validated['phone'] ?? ($user->phone ?? 'N/A'),
+                'phone' => $validated['phone'] ?? ($user->phone ?? ''),
                 'vehicle_type' => $validated['vehicle_type'] ?? 'Motorcycle',
-                'license_number' => $validated['license_number'],
+                'license_number' => $validated['license_number'] ?? null,
                 'license_image' => $validated['license_image'] ?? null,
                 'kyc_status' => 'submitted',
                 'is_online' => false,
