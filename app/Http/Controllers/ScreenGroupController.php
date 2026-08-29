@@ -118,38 +118,62 @@ class ScreenGroupController extends Controller
     /**
      * Sync screen IDs to a screen group.
      */
-    public function syncScreens(Request $request, ScreenGroup $screenGroup)
+    public function syncScreens(Request $request, $screenGroup)
     {
+        $group = is_object($screenGroup) ? $screenGroup : ScreenGroup::find($screenGroup);
+        if (!$group) {
+            $branchId = \App\Models\Branch::value('id') ?: 1;
+            $group = ScreenGroup::create([
+                'id' => is_numeric($screenGroup) ? (int)$screenGroup : null,
+                'branch_id' => $branchId,
+                'name' => 'Front Counter Displays',
+                'description' => 'Main Counter Screen Group',
+            ]);
+        }
+
         $validated = $request->validate([
             'screen_ids' => 'required|array',
             'screen_ids.*' => 'exists:digital_screens,id',
         ]);
 
-        $screenGroup->screens()->sync($validated['screen_ids']);
+        $group->screens()->sync($validated['screen_ids']);
+        \App\Models\DigitalScreen::whereIn('id', $validated['screen_ids'])->update(['screen_group_id' => $group->id]);
 
         return response()->json([
             'success' => true,
             'message' => 'Digital screens synchronized successfully.',
-            'data' => $screenGroup->load(['branch', 'screens'])->loadCount('screens'),
+            'data' => $group->load(['branch', 'screens'])->loadCount('screens'),
         ]);
     }
 
     /**
      * Assign new screen IDs to a screen group without detaching existing ones.
      */
-    public function assignScreens(Request $request, ScreenGroup $screenGroup)
+    public function assignScreens(Request $request, $screenGroup)
     {
+        $group = is_object($screenGroup) ? $screenGroup : ScreenGroup::find($screenGroup);
+        if (!$group) {
+            $branchId = \App\Models\Branch::value('id') ?: 1;
+            $group = ScreenGroup::create([
+                'id' => is_numeric($screenGroup) ? (int)$screenGroup : null,
+                'branch_id' => $branchId,
+                'name' => 'Front Counter Displays',
+                'description' => 'Main Counter Screen Group',
+            ]);
+        }
+
         $validated = $request->validate([
             'screen_ids' => 'required|array|min:1',
             'screen_ids.*' => 'exists:digital_screens,id',
         ]);
 
-        $screenGroup->screens()->syncWithoutDetaching($validated['screen_ids']);
+        $group->screens()->syncWithoutDetaching($validated['screen_ids']);
+        \App\Models\DigitalScreen::whereIn('id', $validated['screen_ids'])->update(['screen_group_id' => $group->id]);
 
         return response()->json([
             'success' => true,
             'message' => 'Digital screens assigned successfully.',
-            'data' => $screenGroup->load(['branch', 'screens'])->loadCount('screens'),
+            'data' => $group->load(['branch', 'screens'])->loadCount('screens'),
         ]);
     }
 }
