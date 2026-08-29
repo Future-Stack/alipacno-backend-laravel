@@ -283,7 +283,12 @@ class User extends Authenticatable
     }
 
     public function driver(): HasOne
-{
-    return $this->hasOne(Driver::class);
-}
+    {
+        return $this->hasOne(Driver::class);
+    }
+
+    public function branchAdmin(): HasOne
+    {
+        return $this->hasOne(BranchAdmin::class, 'email', 'email');
+    }
 }

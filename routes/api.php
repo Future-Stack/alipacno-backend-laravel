@@ -246,7 +246,12 @@ Route::prefix('v1')->group(function () {
     // Protected API Endpoints (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
 
-        // User & Addresses
+        // User Management & CSV Import/Export
+        Route::get('users/sample-csv', [UserController::class, 'sampleCsv']);
+        Route::get('users/export-csv', [UserController::class, 'exportCsv']);
+        Route::post('users/import-csv', [UserController::class, 'importCsv']);
+        Route::get('users/roles-and-types', [UserController::class, 'helperOptions']);
+        Route::match(['post', 'patch', 'put'], 'users/{user}/status', [UserController::class, 'updateStatus']);
         Route::apiResource('users', UserController::class);
         Route::post('/profile_update', [ProfileController::class, 'updateProfile']);
         Route::apiResource('user-addresses', UserAddressController::class);
