@@ -12,7 +12,21 @@ class SignageContent extends Model
 
     protected $table = 'signage_contents';
 
-    protected $fillable = ['title', 'content_type', 'file', 'thumbnail', 'duration', 'status'];
+    protected $fillable = [
+        'title',
+        'content_name',
+        'content_type',
+        'campaign_tag',
+        'description',
+        'file',
+        'thumbnail',
+        'resolution',
+        'file_size',
+        'dimensions',
+        'aspect_ratio',
+        'duration',
+        'status',
+    ];
 
     protected $casts = [
         'duration' => 'integer',

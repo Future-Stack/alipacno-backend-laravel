@@ -187,6 +187,13 @@ Route::prefix('v1')->group(function () {
     Route::get('signage/screens/{digital_screen}', [DigitalScreenController::class, 'show']);
     Route::get('signage/groups', [ScreenGroupController::class, 'index']);
     Route::get('signage/groups/{screen_group}', [ScreenGroupController::class, 'show']);
+    Route::post('screen-groups/{screen_group}/assign-screens', [ScreenGroupController::class, 'assignScreens']);
+    Route::post('screen-groups/{screen_group}/sync-screens', [ScreenGroupController::class, 'syncScreens']);
+    Route::get('signage/contents', [SignageContentController::class, 'index']);
+    Route::get('signage/contents/{signage_content}', [SignageContentController::class, 'show']);
+    Route::post('signage/publish-content', [SignageContentController::class, 'publish']);
+    Route::post('signage-contents/publish', [SignageContentController::class, 'publish']);
+    Route::post('dashboard/signage/add-content', [SignageContentController::class, 'publish']);
 
     Route::get('dashboard/staff-overview', [DashboardController::class, 'staffOverview']);
 
@@ -240,7 +247,12 @@ Route::prefix('v1')->group(function () {
     // Protected API Endpoints (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
 
-        // User & Addresses
+        // User Management & CSV Import/Export
+        Route::get('users/sample-csv', [UserController::class, 'sampleCsv']);
+        Route::get('users/export-csv', [UserController::class, 'exportCsv']);
+        Route::post('users/import-csv', [UserController::class, 'importCsv']);
+        Route::get('users/roles-and-types', [UserController::class, 'helperOptions']);
+        Route::match(['post', 'patch', 'put'], 'users/{user}/status', [UserController::class, 'updateStatus']);
         Route::apiResource('users', UserController::class);
         Route::post('/profile_update', [ProfileController::class, 'updateProfile']);
         Route::apiResource('user-addresses', UserAddressController::class);

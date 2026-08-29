@@ -18,6 +18,12 @@ use App\Models\MenuItem;
 use App\Models\BranchAdmin;
 use App\Models\KitchenOrder;
 use App\Models\KitchenStation;
+use App\Models\DigitalScreen;
+use App\Models\ScreenGroup;
+use App\Models\SignageContent;
+use App\Models\ScreenPlaylist;
+use App\Models\ScreenSchedule;
+use App\Models\ScreenImpression;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -2191,47 +2197,46 @@ class DashboardController extends Controller
     {
         $authUser = $request->user() ?? auth('sanctum')->user();
 
-        // 1. Calculate KPI Metrics
+        // 1. Calculate Real Dynamic KPI Metrics (Strictly 0 if empty)
         $totalScreensCount = \App\Models\DigitalScreen::count();
         $activeScreensCount = \App\Models\DigitalScreen::where('status', 'online')->count();
         $scheduledContentsCount = \App\Models\ScreenSchedule::where('status', 'active')->count();
         
-        // Impressions calculation
         $dbImpressions = (int) (\App\Models\ScreenImpression::sum('play_count') ?: \App\Models\ScreenImpression::sum('total_views'));
-        $impressionsDisplay = $dbImpressions > 0 
-            ? ($dbImpressions >= 1000 ? round($dbImpressions / 1000, 1) . ' K' : (string) $dbImpressions)
-            : '124.5 K';
+        $impressionsDisplay = $dbImpressions >= 1000 
+            ? round($dbImpressions / 1000, 1) . ' K' 
+            : (string) $dbImpressions;
 
         $kpis = [
             'total_screens' => [
                 'title' => 'Total Screens',
-                'count' => $totalScreensCount ?: 48,
-                'formatted' => (string) ($totalScreensCount ?: 48),
-                'badge' => '-8.4% vs last week',
-                'trend' => 'down',
+                'count' => $totalScreensCount,
+                'formatted' => (string) $totalScreensCount,
+                'badge' => $totalScreensCount > 0 ? '+0.0% vs last week' : '0% vs last week',
+                'trend' => 'up',
                 'icon' => 'tv',
             ],
             'active_screens' => [
                 'title' => 'Active Screens',
-                'count' => $activeScreensCount ?: 42,
-                'formatted' => (string) ($activeScreensCount ?: 42),
-                'badge' => '+12.4% vs last week',
+                'count' => $activeScreensCount,
+                'formatted' => (string) $activeScreensCount,
+                'badge' => $activeScreensCount > 0 ? '+0.0% vs last week' : '0% vs last week',
                 'trend' => 'up',
                 'icon' => 'monitor',
             ],
             'scheduled_contents' => [
                 'title' => 'Scheduled Contents',
-                'count' => $scheduledContentsCount ?: 24,
-                'formatted' => (string) ($scheduledContentsCount ?: 24),
-                'badge' => '+12.4% vs last week',
+                'count' => $scheduledContentsCount,
+                'formatted' => (string) $scheduledContentsCount,
+                'badge' => $scheduledContentsCount > 0 ? '+0.0% vs last week' : '0% vs last week',
                 'trend' => 'up',
                 'icon' => 'calendar',
             ],
             'total_impressions' => [
                 'title' => 'Total Impressions',
-                'count' => $dbImpressions ?: 124500,
+                'count' => $dbImpressions,
                 'formatted' => $impressionsDisplay,
-                'badge' => '+12.4% vs last week',
+                'badge' => $dbImpressions > 0 ? '+0.0% vs last week' : '0% vs last week',
                 'trend' => 'up',
                 'icon' => 'bar-chart-2',
             ],
@@ -2274,12 +2279,12 @@ class DashboardController extends Controller
                 'id' => $s->id,
                 'screen_name' => $s->screen_name,
                 'resolution' => $s->resolution ?? '1920 x 1080',
-                'location' => $s->location ?? 'Main Counter',
-                'thumbnail' => asset('storage/signage/thumbnails/screen_' . ($s->id % 5 + 1) . '.jpg'),
+                'location' => $s->location ?? '',
+                'thumbnail' => $s->thumbnail ? (str_starts_with($s->thumbnail, 'http') ? $s->thumbnail : asset('storage/' . $s->thumbnail)) : null,
                 'branch_id' => $s->branch_id,
-                'branch_name' => $s->branch?->name ?? 'Downtown Branch',
+                'branch_name' => $s->branch?->name ?? '',
                 'group_id' => $s->screen_group_id,
-                'group_name' => $s->screenGroup?->name ?? 'Front Counter Display',
+                'group_name' => $s->screenGroup?->name ?? '',
                 'device_uuid' => $s->device_uuid,
                 'status' => $displayStatus,
                 'status_badge' => $badgeColor,
@@ -2288,17 +2293,17 @@ class DashboardController extends Controller
             ];
         });
 
-        // 3. Content Overview Donut Chart Breakdown
-        $imageCount = \App\Models\SignageContent::where('content_type', 'image')->count() ?: 62;
-        $videoCount = \App\Models\SignageContent::where('content_type', 'video')->count() ?: 32;
-        $playlistCount = \App\Models\ScreenPlaylist::count() ?: 20;
-        $otherCount = \App\Models\SignageContent::whereNotIn('content_type', ['image', 'video'])->count() ?: 14;
+        // 3. Content Overview Donut Chart Breakdown (Strictly Real Dynamic Data)
+        $imageCount = \App\Models\SignageContent::where('content_type', 'image')->count();
+        $videoCount = \App\Models\SignageContent::where('content_type', 'video')->count();
+        $playlistCount = \App\Models\ScreenPlaylist::count();
+        $otherCount = \App\Models\SignageContent::whereNotIn('content_type', ['image', 'video'])->count();
 
         $totalContent = $imageCount + $videoCount + $playlistCount + $otherCount;
-        $imgPct = round(($imageCount / $totalContent) * 100, 1);
-        $vidPct = round(($videoCount / $totalContent) * 100, 1);
-        $plyPct = round(($playlistCount / $totalContent) * 100, 1);
-        $othPct = round(($otherCount / $totalContent) * 100, 1);
+        $imgPct = $totalContent > 0 ? round(($imageCount / $totalContent) * 100, 1) : 0;
+        $vidPct = $totalContent > 0 ? round(($videoCount / $totalContent) * 100, 1) : 0;
+        $plyPct = $totalContent > 0 ? round(($playlistCount / $totalContent) * 100, 1) : 0;
+        $othPct = $totalContent > 0 ? round(($otherCount / $totalContent) * 100, 1) : 0;
 
         $contentOverview = [
             'total' => $totalContent,
@@ -2310,37 +2315,28 @@ class DashboardController extends Controller
             ],
         ];
 
-        // 4. Upcoming Schedules (Dayparting & Menu Scheduling Timeline)
-        $dbSchedules = \App\Models\ScreenSchedule::with(['playlist', 'screen'])
+        // 4. Upcoming Schedules (Strictly Real DB Data, Empty array if no schedules)
+        $dbSchedules = \App\Models\ScreenSchedule::with(['playlist', 'screen', 'signageContent'])
             ->where('status', 'active')
             ->orderBy('start_time', 'asc')
             ->limit(5)
             ->get();
 
         $upcomingSchedules = $dbSchedules->map(function ($sch) {
-            $formattedTime = \Carbon\Carbon::parse($sch->start_time)->format('h:i A');
-            $playlistName = $sch->playlist?->name ?? 'Standard Items';
-            $itemsCount = $sch->playlist?->items?->count() ?? 42;
+            $formattedTime = $sch->start_time ? \Carbon\Carbon::parse($sch->start_time)->format('h:i A') : '';
+            $title = $sch->schedule_name ?? $sch->title ?? $sch->playlist?->title ?? $sch->signageContent?->title ?? 'Schedule Item #' . $sch->id;
+            $itemsCount = $sch->playlist?->playlistItems?->count() ?? ($sch->signage_content_id ? 1 : 0);
 
             return [
                 'id' => $sch->id,
                 'time' => $formattedTime,
-                'title' => $playlistName,
+                'title' => $title,
                 'subtitle' => "{$itemsCount} Items",
                 'tag' => 'Today',
                 'screen_id' => $sch->screen_id,
-                'screen_name' => $sch->screen?->screen_name ?? 'All In-Store Screens',
+                'screen_name' => $sch->screen?->screen_name ?? '',
             ];
         });
-
-        // Default fallbacks if DB has no schedules seeded yet
-        if ($upcomingSchedules->isEmpty()) {
-            $upcomingSchedules = [
-                ['id' => 1, 'time' => '10:00 AM', 'title' => 'Veg Items', 'subtitle' => '42 Items', 'tag' => 'Today'],
-                ['id' => 2, 'time' => '12:00 PM', 'title' => 'Epic Items', 'subtitle' => '42 Items', 'tag' => 'Today'],
-                ['id' => 3, 'time' => '03:00 PM', 'title' => 'Modifier Groups', 'subtitle' => '42 Items', 'tag' => 'Today'],
-            ];
-        }
 
         // 5. Filter Dropdown Options
         $branches = \App\Models\Branch::select('id', 'name')->get();
@@ -2351,7 +2347,7 @@ class DashboardController extends Controller
                 'title' => 'Digital Signage Management',
                 'subtitle' => 'Manage and display content across all in-store screens.',
                 'breadcrumb' => 'Pacinos HQ > Signage',
-                'user_role' => $authUser?->role?->name ?? 'Super Administrator',
+                'user_role' => $authUser && method_exists($authUser, 'hasRole') && $authUser->hasRole('super_admin') ? 'Super Admin' : 'Admin',
             ],
             'kpis' => $kpis,
             'filters' => [
