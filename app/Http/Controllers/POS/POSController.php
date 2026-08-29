@@ -98,7 +98,7 @@ class POSController extends Controller
             'toppings.*' => 'exists:toppings,id',
         ]);
 
-        $cartID = auth()->id();
+        $adminID = auth()->id();
 
         $quantity = $validated['quantity'] ?? 1;
         $menuItem = MenuItem::findOrFail($validated['menu_item_id']);
