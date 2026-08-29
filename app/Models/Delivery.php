@@ -24,4 +24,9 @@ class Delivery extends Model
     {
         return $this->belongsTo(Driver::class);
     }
+
+    public function user()
+    {
+        return $this->hasOneThrough(User::class, Order::class, 'id', 'id', 'order_id', 'user_id');
+    }
 }

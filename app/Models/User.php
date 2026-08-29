@@ -54,7 +54,59 @@ class User extends Authenticatable
         'driver_status',
         'reject_reason',
         'branch_id',
+        'latitude',
+        'longitude',
     ];
+
+    public function getLatitudeAttribute(): ?float
+    {
+        if (isset($this->attributes['latitude']) && $this->attributes['latitude'] !== null) {
+            return (float) $this->attributes['latitude'];
+        }
+
+        $addr = $this->relationLoaded('defaultAddress') 
+            ? $this->defaultAddress 
+            : ($this->relationLoaded('address') ? $this->address : null);
+
+        if ($addr && $addr->latitude !== null) {
+            return (float) $addr->latitude;
+        }
+
+        if ($this->relationLoaded('addresses') && $this->addresses->isNotEmpty()) {
+            $firstAddr = $this->addresses->first(fn($a) => $a->latitude !== null);
+            if ($firstAddr && $firstAddr->latitude !== null) {
+                return (float) $firstAddr->latitude;
+            }
+        }
+
+        $addrVal = $this->defaultAddress()->value('latitude') ?? $this->addresses()->whereNotNull('latitude')->value('latitude');
+        return $addrVal !== null ? (float) $addrVal : null;
+    }
+
+    public function getLongitudeAttribute(): ?float
+    {
+        if (isset($this->attributes['longitude']) && $this->attributes['longitude'] !== null) {
+            return (float) $this->attributes['longitude'];
+        }
+
+        $addr = $this->relationLoaded('defaultAddress') 
+            ? $this->defaultAddress 
+            : ($this->relationLoaded('address') ? $this->address : null);
+
+        if ($addr && $addr->longitude !== null) {
+            return (float) $addr->longitude;
+        }
+
+        if ($this->relationLoaded('addresses') && $this->addresses->isNotEmpty()) {
+            $firstAddr = $this->addresses->first(fn($a) => $a->longitude !== null);
+            if ($firstAddr && $firstAddr->longitude !== null) {
+                return (float) $firstAddr->longitude;
+            }
+        }
+
+        $addrVal = $this->defaultAddress()->value('longitude') ?? $this->addresses()->whereNotNull('longitude')->value('longitude');
+        return $addrVal !== null ? (float) $addrVal : null;
+    }
 
     public function getBranchIdAttribute(): ?int
     {

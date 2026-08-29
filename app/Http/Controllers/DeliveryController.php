@@ -18,7 +18,16 @@ class DeliveryController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Delivery::with(['order.items.menuItem', 'order.branch', 'driver']);
+        $query = Delivery::with([
+            'order.items.menuItem',
+            'order.branch',
+            'order.user.defaultAddress',
+            'order.user.address',
+            'order.address',
+            'driver.user',
+            'user.defaultAddress',
+            'user.address',
+        ]);
 
         if ($request->filled('driver_id')) {
             $query->where('driver_id', $request->driver_id);
@@ -31,6 +40,30 @@ class DeliveryController extends Controller
         if ($request->filled('branch_id')) {
             $query->whereHas('order', function ($q) use ($request) {
                 $q->where('branch_id', $request->branch_id);
+            });
+        }
+
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('order', function ($oq) use ($search) {
+                    $oq->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%")
+                        ->orWhere('delivery_address', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($uq) use ($search) {
+                            $uq->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%");
+                        });
+                })->orWhereHas('driver', function ($dq) use ($search) {
+                    $dq->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($duq) use ($search) {
+                            $duq->where('name', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%");
+                        });
+                });
             });
         }
 
@@ -65,7 +98,16 @@ class DeliveryController extends Controller
             ]);
         }
 
-        return response()->json($delivery->load(['order', 'driver']), 201);
+        return response()->json($delivery->load([
+            'order.items.menuItem',
+            'order.branch',
+            'order.user.defaultAddress',
+            'order.user.address',
+            'order.address',
+            'driver.user',
+            'user.defaultAddress',
+            'user.address',
+        ]), 201);
     }
 
     /**
@@ -73,7 +115,16 @@ class DeliveryController extends Controller
      */
     public function show(Delivery $delivery)
     {
-        return response()->json($delivery->load(['order.items.menuItem', 'order.branch', 'driver']));
+        return response()->json($delivery->load([
+            'order.items.menuItem',
+            'order.branch',
+            'order.user.defaultAddress',
+            'order.user.address',
+            'order.address',
+            'driver.user',
+            'user.defaultAddress',
+            'user.address',
+        ]));
     }
 
     /**
@@ -89,12 +140,29 @@ class DeliveryController extends Controller
 
         $status = $validated['delivery_status'];
         $order = $delivery->order;
-        $driver = $delivery->driver;
+        $driverId = $validated['driver_id'] ?? $delivery->driver_id;
+        $driver = $driverId ? Driver::find($driverId) : $delivery->driver;
         $driverName = $driver?->name ?? 'Driver';
 
-        if (($status === 'picked_up' || $status === 'on_the_way') && !$delivery->pickup_time) {
-            $validated['pickup_time'] = now();
-            $delivery->order()->update(['order_status' => 'out_for_delivery']);
+        if ($status === 'assigned') {
+            if ($driverId) {
+                Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
+                $delivery->order()?->update([
+                    'assigned_driver_id' => $driverId,
+                    'order_status' => 'accepted',
+                ]);
+            }
+        } elseif ($status === 'picked_up' || $status === 'on_the_way') {
+            if (!$delivery->pickup_time) {
+                $validated['pickup_time'] = now();
+            }
+            if ($driverId) {
+                Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
+            }
+            $delivery->order()?->update([
+                'assigned_driver_id' => $driverId,
+                'order_status' => 'out_for_delivery',
+            ]);
 
             // Notify Customer (In-App & FCM Push)
             if ($order && $order->user_id) {
@@ -124,13 +192,11 @@ class DeliveryController extends Controller
                     Log::error('Customer Pickup Notification Error: ' . $e->getMessage());
                 }
             }
-        }
-
-        if ($status === 'delivered') {
+        } elseif ($status === 'delivered') {
             $validated['delivered_time'] = now();
-            $delivery->order()->update(['order_status' => 'completed', 'payment_status' => 'paid']);
-            if ($delivery->driver_id) {
-                Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
+            $delivery->order()?->update(['order_status' => 'completed', 'payment_status' => 'paid']);
+            if ($driverId) {
+                Driver::where('id', $driverId)->update(['status' => 'available']);
             }
 
             // Notify Customer (In-App & FCM Push)
@@ -161,14 +227,23 @@ class DeliveryController extends Controller
                     Log::error('Customer Delivered Notification Error: ' . $e->getMessage());
                 }
             }
-        } elseif ($status === 'failed' && $delivery->driver_id) {
-            Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
+        } elseif ($status === 'failed') {
+            $delivery->order()?->update(['order_status' => 'cancelled']);
+            if ($driverId) {
+                Driver::where('id', $driverId)->update(['status' => 'available']);
+            }
         }
 
         if (isset($validated['driver_id']) && $validated['driver_id'] !== $delivery->driver_id) {
+            // Free previous driver if changed
+            if ($delivery->driver_id && $delivery->driver_id !== $validated['driver_id']) {
+                Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
+            }
             // Mark new driver as on delivery
-            Driver::where('id', $validated['driver_id'])->update(['status' => 'on_delivery']);
-            $delivery->order()->update(['assigned_driver_id' => $validated['driver_id']]);
+            if (!empty($validated['driver_id'])) {
+                Driver::where('id', $validated['driver_id'])->update(['status' => 'on_delivery']);
+                $delivery->order()?->update(['assigned_driver_id' => $validated['driver_id']]);
+            }
         }
 
         $delivery->update($validated);
@@ -182,7 +257,16 @@ class DeliveryController extends Controller
             }
         }
 
-        return response()->json($delivery->load(['order', 'driver']));
+        return response()->json($delivery->load([
+            'order.items.menuItem',
+            'order.branch',
+            'order.user.defaultAddress',
+            'order.user.address',
+            'order.address',
+            'driver.user',
+            'user.defaultAddress',
+            'user.address',
+        ]));
     }
 
     /**

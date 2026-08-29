@@ -277,8 +277,16 @@ Route::prefix('v1')->group(function () {
         Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
         Route::delete('account-delete', [DeleteUsersController::class, 'destroy']);
         Route::apiResource('faqs', FaqController::class);
-         Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
-        Route::post( '/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
+        Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
+        Route::post('/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
+
+        // Notification Center & Notification Settings
+        Route::get('notifications/summary', [NotificationController::class, 'summary']);
+        Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::post('notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
+        Route::patch('notifications/{notification}/toggle-read', [NotificationController::class, 'toggleRead']);
+        Route::apiResource('notifications', NotificationController::class);
+        Route::apiResource('notification-settings', NotificationSettingController::class);
 
 
 
