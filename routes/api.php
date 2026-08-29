@@ -285,7 +285,7 @@ Route::prefix('v1')->group(function () {
 
 
         // Role & Permission Protected Operations
-        Route::middleware('role:super_admin,hq_admin,branch_admin')->group(function () {
+        Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff')->group(function () {
             Route::post('roles/{role}/sync-permissions', [RoleController::class, 'syncPermissions']);
             Route::post('roles/{role}/assign-permissions', [RoleController::class, 'assignPermissions']);
             Route::apiResource('roles', RoleController::class);
@@ -298,6 +298,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/staff/export', [StaffController::class, 'export']);
             Route::get('/staff/overview', [StaffController::class, 'overview']);
             Route::get('/staff/management-summary/{branch_id}', [StaffController::class, 'managementSummary']);
+            Route::get('/staff/cash-reconciliation/{branch_id}', [StaffController::class, 'cashReconciliationOverview']);
+            Route::post('/staff/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
+            Route::get('/cash-reconciliation/{branch_id}', [StaffController::class, 'cashReconciliationOverview']);
+            Route::post('/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
             Route::post('staff-attendance/{staff_attendance}/clock-out', [StaffAttendanceController::class, 'clockOut']);

@@ -91,10 +91,10 @@ class DriverController extends Controller
         }
 
         $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'user_id' => 'nullable|exists:users,id',
-            'name' => 'required|string|max:255',
-            'phone' => 'required|string|max:50',
+            'name' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:50',
             'vehicle_type' => 'nullable|string|max:100',
             'license_number' => 'required|string|max:100',
             'license_image' => 'nullable',
@@ -117,6 +117,12 @@ class DriverController extends Controller
         } else {
             $validated['user_id'] = $validated['user_id'] ?? $authUser->id;
         }
+
+        // Resolve name, phone, and branch fallbacks from user and database
+        $targetUser = ($validated['user_id'] == $authUser->id) ? $authUser : \App\Models\User::find($validated['user_id']);
+        $validated['name'] = !empty($validated['name']) ? $validated['name'] : ($targetUser?->name ?? 'Driver');
+        $validated['phone'] = !empty($validated['phone']) ? $validated['phone'] : ($targetUser?->phone ?? '');
+        $validated['branch_id'] = $validated['branch_id'] ?? \App\Models\Branch::value('id') ?? 1;
 
         // Handle optional license file/image upload (supports JPEG, PNG, JPG, WEBP, PDF)
         if ($request->hasFile('license_image')) {
@@ -321,27 +327,25 @@ class DriverController extends Controller
             $validated['license_image'] = $request->file('license_image')->store('drivers/licenses', 'public');
         }
 
-        if (!$driver) {
-            $driver = Driver::create([
-                'user_id' => $user->id,
-                'branch_id' => $validated['branch_id'] ?? 1,
-                'name' => $validated['name'] ?? $user->name,
-                'phone' => $validated['phone'] ?? ($user->phone ?? 'N/A'),
-                'vehicle_type' => $validated['vehicle_type'] ?? 'Motorcycle',
-                'license_number' => $validated['license_number'],
-                'license_image' => $validated['license_image'] ?? null,
-                'kyc_status' => 'submitted',
-                'is_online' => false,
-                'status' => 'available',
-                'reject_reason' => null,
-            ]);
-        } else {
-            $updateData = array_filter($validated, fn($val) => !is_null($val));
-            $updateData['kyc_status'] = 'submitted';
-            $updateData['reject_reason'] = null; // Clear previous rejection reason upon resubmitting
+        $matchCriteria = ['user_id' => $user->id];
 
-            $driver->update($updateData);
+        $driverData = [
+            'branch_id' => $validated['branch_id'] ?? ($driver?->branch_id ?? (\App\Models\Branch::value('id') ?? 1)),
+            'name' => $validated['name'] ?? ($driver?->name ?? ($user->name ?? 'Driver')),
+            'phone' => $validated['phone'] ?? ($driver?->phone ?? ($user->phone ?? '')),
+            'vehicle_type' => $validated['vehicle_type'] ?? ($driver?->vehicle_type ?? 'Motorcycle'),
+            'license_number' => $validated['license_number'],
+            'kyc_status' => 'submitted',
+            'reject_reason' => null,
+            'is_online' => $driver?->is_online ?? false,
+            'status' => $driver?->status ?? 'available',
+        ];
+
+        if (isset($validated['license_image'])) {
+            $driverData['license_image'] = $validated['license_image'];
         }
+
+        $driver = Driver::updateOrCreate($matchCriteria, $driverData);
 
         $freshDriver = $driver->fresh(['branch', 'user']);
 
