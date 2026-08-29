@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\POS\POSController;
 use App\Http\Controllers\Profile\ProfileController;
 use App\Http\Controllers\Stripe\StripeController;
 use App\Http\Controllers\Subcategory\SubcategoryController;
@@ -278,9 +279,9 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('faqs', FaqController::class);
          Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
         Route::post( '/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
-       
-       
-    
+
+
+
 
 
         // Role & Permission Protected Operations
@@ -439,6 +440,13 @@ Route::prefix('v1')->group(function () {
         //Wishlist
         Route::get('/my-wishlist', [WishlistController::class, 'myWishlist']);
         Route::post('/toggle-wishlist', [WishlistController::class, 'toggle']);
+
+        //POS (Branch Admin/ Cashier)
+        Route::get('/category-list', [POSController::class, 'getCategoryList']);
+        Route::get('/menu-items/{categoryID}/{branchID}', [POSController::class, 'getMenuItem']);
+        Route::get('/menu-items/{menuItem}', [POSController::class, 'showMenuItem']);
+        Route::post('/pos/add-to-cart', [POSController::class, 'addToCart']);
+
     });
 
     //Stripe

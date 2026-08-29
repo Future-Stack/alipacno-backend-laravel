@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('branch_admins', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable();
             $table->foreignId('branch_id');
             $table->string('name');
             $table->string('email')->unique();

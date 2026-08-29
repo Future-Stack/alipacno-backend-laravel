@@ -105,6 +105,21 @@ class BranchAdminTest extends TestCase
             'branch_id' => $this->branch->id,
             'email' => 'carl@branch.com',
         ]);
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'carl@branch.com',
+            'user_type' => 'branch_admin',
+        ]);
+
+        // Verify Branch Admin can log in and see their branch
+        $loginResponse = $this->postJson('/api/v1/auth/login', [
+            'login' => 'carl@branch.com',
+            'password' => 'password123',
+        ]);
+
+        $loginResponse->assertStatus(200);
+        $this->assertEquals('branch_admin', $loginResponse->json('user.user_type'));
+        $this->assertEquals($this->branch->id, $loginResponse->json('user.branch_id'));
     }
 
     public function test_can_show_branch_admin(): void

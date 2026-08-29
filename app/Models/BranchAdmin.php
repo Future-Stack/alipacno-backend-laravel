@@ -11,7 +11,7 @@ class BranchAdmin extends Model
 
     protected $table = 'branch_admins';
 
-    protected $fillable = ['branch_id', 'name', 'email', 'phone', 'password', 'avatar', 'last_login', 'status'];
+    protected $fillable = ['user_id', 'branch_id', 'name', 'email', 'phone', 'password', 'avatar', 'last_login', 'status'];
 
     protected $hidden = ['password'];
 
@@ -19,6 +19,11 @@ class BranchAdmin extends Model
         'password' => 'hashed',
         'last_login' => 'datetime',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function branch()
     {

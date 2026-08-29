@@ -182,7 +182,7 @@ class AuthController extends Controller
         $user->email_verified_at = now();
         $user->save();
 
-        $user->load(['driver.branch', 'role.permissions']);
+        $user->load(['driver.branch', 'branchAdmin.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -428,7 +428,7 @@ class AuthController extends Controller
         // Revoke previous tokens
         $user->tokens()->delete();
 
-        $user->load(['driver.branch', 'role.permissions']);
+        $user->load(['driver.branch', 'branchAdmin.branch', 'role.permissions']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -530,7 +530,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $user->load(['driver.branch', 'role.permissions']);
+        $user->load(['driver.branch', 'branchAdmin.branch', 'role.permissions']);
 
         // Revoke previous tokens optionally
         $user->tokens()->delete();
@@ -553,11 +553,12 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = Auth::user()->load(['addresses', 'defaultAddress', 'driver.branch', 'role.permissions']);
+        $user = Auth::user()->load(['addresses', 'defaultAddress', 'driver.branch', 'branchAdmin.branch', 'role.permissions']);
 
         return response()->json([
             'user' => $user,
             'address' => $user->defaultAddress ?? $user->addresses->first(),
+            'branch' => $user->branchAdmin?->branch ?? $user->driver?->branch,
             'kyc_status' => $user->driver?->kyc_status ?? ($user->user_type === 'driver' ? 'pending' : null),
             'is_online' => (bool) ($user->driver?->is_online ?? false),
             'status' => $user->driver?->status ?? 'available',
