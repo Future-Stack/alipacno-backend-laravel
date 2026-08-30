@@ -787,7 +787,7 @@ class DriverController extends Controller
             return response()->json(['message' => 'Driver profile not found.'], 404);
         }
 
-        $tab = $request->input('tab', 'ongoing'); // 'all', 'upcoming', 'ongoing', 'completed'
+        $tab = $request->input('tab', 'all'); // 'all', 'upcoming', 'ongoing', 'completed'
 
         // Counts for tab badges
         $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
