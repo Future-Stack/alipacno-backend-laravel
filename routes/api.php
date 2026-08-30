@@ -441,9 +441,6 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('screen-schedules', ScreenScheduleController::class);
         });
 
-
-
-
         // Notifications
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::apiResource('notifications', NotificationController::class);
@@ -458,6 +455,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/menu-items/{categoryID}/{branchID}', [POSController::class, 'getMenuItem']);
         Route::get('/menu-items/{menuItem}', [POSController::class, 'showMenuItem']);
         Route::post('/pos/add-to-cart', [POSController::class, 'addToCart']);
+        Route::get('/pos/cart-items', [POSController::class, 'getCartItems']);
+        Route::post('/pos/update-cart-item/{cartItemId}', [POSController::class, 'updateCartItem']);
+        Route::post('/pos/checkout', [POSController::class, 'checkout']);
 
     });
 
