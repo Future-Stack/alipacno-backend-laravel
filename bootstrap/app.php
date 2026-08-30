@@ -4,6 +4,10 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
+use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
@@ -19,5 +23,22 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson() || $request->header('Accept') === 'application/json' || $request->isJson()) {
+                $previous = $e->getPrevious();
+                if ($previous instanceof ModelNotFoundException) {
+                    $modelName = class_basename($previous->getModel());
+                    $readableName = trim(preg_replace('/(?<!\ )[A-Z]/', ' $0', $modelName));
+                    return response()->json([
+                        'status' => 404,
+                        'message' => "No data found for {$readableName}.",
+                    ], 404);
+                }
+
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'No data found or endpoint does not exist.',
+                ], 404);
+            }
+        });
     })->create();

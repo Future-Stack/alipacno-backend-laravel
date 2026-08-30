@@ -12,7 +12,24 @@ class NotificationSettingController extends Controller
      */
     public function index(Request $request)
     {
-        $userId = $request->input('user_id', $request->user()?->id);
+        $user = $request->user();
+        $userId = $request->input('user_id', $user?->id);
+
+        // If a user ID is resolved and has no settings record yet, auto-create default settings
+        if ($userId && !NotificationSetting::where('user_id', $userId)->exists()) {
+            NotificationSetting::create([
+                'user_id' => $userId,
+                'order_alert' => true,
+                'branch_alert' => true,
+                'low_stock_alert' => true,
+                'driver_alert' => true,
+                'marketing_report' => true,
+                'daily_summary' => true,
+                'email_notification' => true,
+                'sms_notification' => true,
+                'push_notification' => true,
+            ]);
+        }
 
         $query = NotificationSetting::with(['user', 'branchAdmin']);
 
