@@ -43,6 +43,7 @@ class Order extends Model
         'customer_phone',
         'delivery_address',
         'notes',
+        'rejection_reason',
     ];
 
     public function user()

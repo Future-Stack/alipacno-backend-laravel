@@ -261,6 +261,8 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('carts', CartController::class)->except(['index', 'store','show']);
         Route::apiResource('cart-items', CartItemController::class)->except(['store', 'update', 'destroy']);
         Route::post('orders/{order}/assign-driver', [OrderController::class, 'assignDriver']);
+        Route::post('orders/{order}/approve', [OrderController::class, 'approve']);
+        Route::post('orders/{order}/reject', [OrderController::class, 'reject']);
         Route::apiResource('orders', OrderController::class)->except(['store']);
         Route::apiResource('order-items', OrderItemController::class);
         Route::post('payments/{payment}/refund', [PaymentController::class, 'processRefund']);

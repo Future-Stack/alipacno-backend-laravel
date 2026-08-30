@@ -515,7 +515,7 @@ class DriverController extends Controller
         $query = Order::with(['items.menuItem', 'branch', 'address'])
             ->where('order_type', 'delivery')
             ->whereNull('assigned_driver_id')
-            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
             ->whereNotIn('id', $declinedOrderIds);
 
         if ($driver->branch_id) {
@@ -793,7 +793,7 @@ class DriverController extends Controller
         $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
         $upcomingCount = Order::where('order_type', 'delivery')
             ->whereNull('assigned_driver_id')
-            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
             ->whereNotIn('id', $declinedOrderIds)
             ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
             ->count();
@@ -836,7 +836,7 @@ class DriverController extends Controller
             $upcomingQuery = Order::with(['items.menuItem', 'branch', 'address'])
                 ->where('order_type', 'delivery')
                 ->whereNull('assigned_driver_id')
-                ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+                ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
                 ->whereNotIn('id', $declinedOrderIds)
                 ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
                 ->latest();
