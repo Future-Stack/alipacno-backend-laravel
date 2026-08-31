@@ -82,6 +82,7 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+use App\Http\Controllers\ChatController;
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Page\PageController;
@@ -289,6 +290,14 @@ Route::prefix('v1')->group(function () {
         Route::patch('notifications/{notification}/toggle-read', [NotificationController::class, 'toggleRead']);
         Route::apiResource('notifications', NotificationController::class);
         Route::apiResource('notification-settings', NotificationSettingController::class);
+
+        // Real-time Chat & Messaging System
+        Route::get('chat/contacts', [ChatController::class, 'contacts']);
+        Route::get('conversations', [ChatController::class, 'index']);
+        Route::post('conversations', [ChatController::class, 'store']);
+        Route::get('conversations/{conversation}', [ChatController::class, 'show']);
+        Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/read', [ChatController::class, 'markAsRead']);
 
 
 
