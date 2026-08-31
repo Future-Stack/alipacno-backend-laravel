@@ -633,6 +633,21 @@ class DriverController extends Controller
                 ], 404);
             }
 
+            // Check if order is already completed/delivered or cancelled
+            if (in_array($lockedOrder->order_status, ['delivered', 'completed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Order #{$lockedOrder->order_number} has already been completed/delivered."
+                ], 422);
+            }
+
+            if ($lockedOrder->order_status === 'cancelled') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Order #{$lockedOrder->order_number} has been cancelled and cannot be accepted."
+                ], 422);
+            }
+
             // Check if order is already assigned
             if (!empty($lockedOrder->assigned_driver_id)) {
                 return response()->json([

@@ -80,6 +80,8 @@ class OrderController extends Controller
 
         if ($request->boolean('unassigned') || $request->boolean('unassigned_only')) {
             $query->whereNull('assigned_driver_id');
+        } elseif ($request->boolean('assigned') || $request->boolean('assigned_only')) {
+            $query->whereNotNull('assigned_driver_id');
         } elseif ($request->filled('assigned_driver_id')) {
             $query->where('assigned_driver_id', $request->assigned_driver_id);
         }
@@ -432,6 +434,14 @@ class OrderController extends Controller
      */
     public function update(Request $request, Order $order)
     {
+        // Disallow updating or reactivating an already cancelled/rejected order
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} has already been cancelled/rejected and cannot be updated or reactivated.",
+            ], 422);
+        }
+
         $validated = $request->validate([
             'order_status' => 'sometimes|in:pending,accepted,preparing,ready,out_for_delivery,completed,cancelled,refunded',
             'payment_status' => 'sometimes|in:pending,paid,failed,refunded',
@@ -631,6 +641,20 @@ class OrderController extends Controller
             return response()->json(['message' => 'Unauthorized: Only admins can assign drivers.'], 403);
         }
 
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign driver: Order #{$order->order_number} is already cancelled.",
+            ], 422);
+        }
+
+        if (in_array($order->order_status, ['delivered', 'completed'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign driver: Order #{$order->order_number} has already been completed/delivered.",
+            ], 422);
+        }
+
         $validated = $request->validate([
             'driver_id' => 'required|exists:drivers,id',
             'order_status' => 'nullable|in:pending,accepted,preparing,ready,out_for_delivery,delivered,completed',
@@ -755,6 +779,22 @@ class OrderController extends Controller
 
         if (!$isAllowed) {
             return response()->json(['message' => 'Unauthorized: Only Super Admins, Branch Admins, and authorized staff can approve orders.'], 403);
+        }
+
+        // Check if the order is already cancelled
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} is cancelled and cannot be approved.",
+            ], 422);
+        }
+
+        // Only pending orders can be approved
+        if ($order->order_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} cannot be approved because its current status is '{$order->order_status}'. Only pending orders can be approved.",
+            ], 422);
         }
 
         $validated = $request->validate([
@@ -885,6 +925,22 @@ class OrderController extends Controller
 
         if (!$isAllowed) {
             return response()->json(['message' => 'Unauthorized: Only Super Admins, Branch Admins, and authorized staff can reject orders.'], 403);
+        }
+
+        // Check if the order is already cancelled / rejected
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} is already cancelled and cannot be rejected again.",
+            ], 422);
+        }
+
+        // Only pending orders can be rejected
+        if ($order->order_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} cannot be rejected because its current status is '{$order->order_status}'. Only pending orders can be rejected.",
+            ], 422);
         }
 
         $validated = $request->validate([
