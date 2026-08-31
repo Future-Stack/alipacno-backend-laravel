@@ -447,13 +447,13 @@ class AiInsightService
 
         if (!empty($apiKey)) {
             try {
-                $model = config('services.gemini.model', 'gemini-1.5-flash');
+                $model = config('services.gemini.model', 'gemini-3.5-flash-lite');
                 $baseUrl = config('services.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta');
                 $url = "{$baseUrl}/models/{$model}:generateContent?key={$apiKey}";
 
                 $prompt = $this->buildGeminiPrompt($summaryData);
 
-                $response = Http::timeout(6)->withHeaders([
+                $response = Http::timeout(15)->withHeaders([
                     'Content-Type' => 'application/json',
                 ])->post($url, [
                     'contents' => [
