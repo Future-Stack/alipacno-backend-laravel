@@ -128,6 +128,8 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/ai-insights', [AiInsightController::class, 'dashboard']);
+    Route::get('dashboard/ai-insights/refresh', [AiInsightController::class, 'refresh']);
 
     // Super Admin / HQ Deliveries Management (Global across all branches)
     Route::get('dashboard/hq/deliveries', [DashboardController::class, 'hqDeliveries']);
@@ -371,6 +373,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('scheduled-reports/{scheduled_report}/toggle-status', [ScheduledReportController::class, 'toggleStatus']);
             Route::post('scheduled-reports/{scheduled_report}/run-now', [ScheduledReportController::class, 'runNow']);
             Route::apiResource('scheduled-reports', ScheduledReportController::class);
+            Route::get('ai-insights/dashboard', [AiInsightController::class, 'dashboard']);
+            Route::post('ai-insights/refresh', [AiInsightController::class, 'refresh']);
             Route::apiResource('ai-insights', AiInsightController::class);
             Route::apiResource('ai-recommendations', AiRecommendationController::class);
 
