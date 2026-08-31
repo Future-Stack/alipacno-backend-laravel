@@ -88,6 +88,21 @@ class DeliveryController extends Controller
             'estimated_time' => 'nullable|date',
         ]);
 
+        $order = Order::find($validated['order_id']);
+        if ($order && in_array($order->order_status, ['delivered', 'completed'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} has already been delivered/completed.",
+            ], 422);
+        }
+
+        if ($order && $order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} is cancelled. Cannot create a delivery.",
+            ], 422);
+        }
+
         $delivery = Delivery::create($validated);
 
         if (!empty($validated['driver_id'])) {
@@ -132,6 +147,30 @@ class DeliveryController extends Controller
      */
     public function update(Request $request, Delivery $delivery)
     {
+        // 1. Check if delivery is already delivered
+        if ($delivery->delivery_status === 'delivered') {
+            $orderNumber = $delivery->order?->order_number ?? $delivery->order_id;
+            return response()->json([
+                'success' => false,
+                'message' => "This delivery for Order #{$orderNumber} has already been delivered and cannot be updated again.",
+            ], 422);
+        }
+
+        // 2. Check if the associated order is already completed or cancelled
+        if ($delivery->order && in_array($delivery->order->order_status, ['delivered', 'completed'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$delivery->order->order_number} has already been completed/delivered. Delivery status cannot be changed.",
+            ], 422);
+        }
+
+        if ($delivery->order && $delivery->order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$delivery->order->order_number} is cancelled. Delivery status cannot be changed.",
+            ], 422);
+        }
+
         $validated = $request->validate([
             'driver_id' => 'nullable|exists:drivers,id',
             'delivery_status' => 'required|in:assigned,picked_up,on_the_way,delivered,failed',
