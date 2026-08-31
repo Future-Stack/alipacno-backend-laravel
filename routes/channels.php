@@ -60,3 +60,17 @@ Broadcast::channel('branch.{branchId}.orders', function ($user, $branchId) {
 
     return false;
 });
+
+Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
+    if ($user->isSuperAdmin() || in_array($user->user_type, ['super_admin', 'admin'])) {
+        return true;
+    }
+
+    return \App\Models\ConversationParticipant::where('conversation_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists();
+});
+
+Broadcast::channel('user.{userId}.chat', function ($user, $userId) {
+    return (int)$user->id === (int)$userId;
+});
