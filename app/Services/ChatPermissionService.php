@@ -80,9 +80,10 @@ class ChatPermissionService
             // Customer messaging Driver: Must be assigned to one of customer's active/recent orders
             if ($this->isDriver($receiver)) {
                 $driverId = $receiver->driver?->id ?? Driver::where('user_id', $receiver->id)->value('id');
+                $driverIdentifiers = array_values(array_filter([$driverId, $receiver->id]));
 
                 $hasActiveDelivery = Order::where('user_id', $sender->id)
-                    ->where('assigned_driver_id', $driverId)
+                    ->whereIn('assigned_driver_id', $driverIdentifiers)
                     ->whereIn('order_status', ['accepted', 'preparing', 'ready', 'out_for_delivery', 'completed'])
                     ->when($order, fn($q) => $q->where('id', $order->id))
                     ->exists();
@@ -119,9 +120,10 @@ class ChatPermissionService
             // Driver messaging Customer of assigned order
             if ($this->isCustomer($receiver)) {
                 $driverId = $sender->driver?->id ?? Driver::where('user_id', $sender->id)->value('id');
+                $driverIdentifiers = array_values(array_filter([$driverId, $sender->id]));
 
                 $hasActiveDelivery = Order::where('user_id', $receiver->id)
-                    ->where('assigned_driver_id', $driverId)
+                    ->whereIn('assigned_driver_id', $driverIdentifiers)
                     ->whereIn('order_status', ['accepted', 'preparing', 'ready', 'out_for_delivery', 'completed'])
                     ->when($order, fn($q) => $q->where('id', $order->id))
                     ->exists();
@@ -195,45 +197,44 @@ class ChatPermissionService
 
             $baseQuery = User::whereIn('id', $allowedIds);
         }
-        // 3. Customer: Super Admin, Branch Managers, Assigned Drivers of their active/recent orders
+        // 3. Customer: Branch Managers, Assigned Drivers of their active/recent orders
         elseif ($this->isCustomer($user)) {
-            $superAdminIds = User::whereIn('user_type', ['super_admin', 'admin', 'hq_admin'])->pluck('id');
-
             $customerBranchIds = Order::where('user_id', $user->id)->pluck('branch_id')->filter()->unique();
-            $branchAdminIds = BranchAdmin::whereIn('branch_id', $customerBranchIds)->pluck('user_id');
-            $branchAdminUsers = User::whereIn('user_type', ['branch_admin'])
-                ->when($customerBranchIds->isNotEmpty(), fn($q) => $q->whereIn('branch_id', $customerBranchIds))
-                ->pluck('id');
+            $branchAdminIds = $this->getBranchAdminUserIds($customerBranchIds);
 
             $assignedDriverIds = Order::where('user_id', $user->id)
                 ->whereNotNull('assigned_driver_id')
-                ->pluck('assigned_driver_id');
-            $driverUserIds = Driver::whereIn('id', $assignedDriverIds)->whereNotNull('user_id')->pluck('user_id');
+                ->pluck('assigned_driver_id')
+                ->filter()
+                ->unique();
 
-            $allowedIds = $superAdminIds
-                ->merge($branchAdminIds)
-                ->merge($branchAdminUsers)
+            $driverUserIdsFromDriversTable = Driver::whereIn('id', $assignedDriverIds)->whereNotNull('user_id')->pluck('user_id');
+            $driverUserIdsFromUserId = Driver::whereIn('user_id', $assignedDriverIds)->pluck('user_id');
+            $driverUserIdsDirect = User::whereIn('id', $assignedDriverIds)->get()
+                ->filter(fn($u) => $this->isDriver($u))
+                ->pluck('id');
+
+            $driverUserIds = $driverUserIdsFromDriversTable
+                ->merge($driverUserIdsFromUserId)
+                ->merge($driverUserIdsDirect)
+                ->unique();
+
+            $allowedIds = $branchAdminIds
                 ->merge($driverUserIds)
                 ->unique()
                 ->reject(fn($id) => $id == $user->id);
 
             $baseQuery = User::whereIn('id', $allowedIds);
         }
-        // 4. Driver: Super Admin, Branch Manager of branch, Customers of assigned orders
+        // 4. Driver: Branch Manager of branch, Customers of assigned orders
         elseif ($this->isDriver($user)) {
-            $superAdminIds = User::whereIn('user_type', ['super_admin', 'admin', 'hq_admin'])->pluck('id');
-
-            $branchAdminIds = BranchAdmin::when($userBranchId, fn($q) => $q->where('branch_id', $userBranchId))->pluck('user_id');
-            $branchAdminUsers = User::whereIn('user_type', ['branch_admin'])
-                ->when($userBranchId, fn($q) => $q->where('branch_id', $userBranchId))
-                ->pluck('id');
+            $branchAdminIds = $userBranchId ? $this->getBranchAdminUserIds($userBranchId) : collect();
 
             $driverId = $user->driver?->id ?? Driver::where('user_id', $user->id)->value('id');
-            $customerIds = Order::where('assigned_driver_id', $driverId)->whereNotNull('user_id')->pluck('user_id');
+            $driverIdentifiers = array_values(array_filter([$driverId, $user->id]));
+            $customerIds = Order::whereIn('assigned_driver_id', $driverIdentifiers)->whereNotNull('user_id')->pluck('user_id');
 
-            $allowedIds = $superAdminIds
-                ->merge($branchAdminIds)
-                ->merge($branchAdminUsers)
+            $allowedIds = $branchAdminIds
                 ->merge($customerIds)
                 ->unique()
                 ->reject(fn($id) => $id == $user->id);
@@ -243,9 +244,7 @@ class ChatPermissionService
         // Fallback for Staff
         else {
             $superAdminIds = User::whereIn('user_type', ['super_admin', 'admin', 'hq_admin'])->pluck('id');
-            $branchAdminIds = User::whereIn('user_type', ['branch_admin'])
-                ->when($userBranchId, fn($q) => $q->where('branch_id', $userBranchId))
-                ->pluck('id');
+            $branchAdminIds = $userBranchId ? $this->getBranchAdminUserIds($userBranchId) : collect();
 
             $allowedIds = $superAdminIds->merge($branchAdminIds)->unique()->reject(fn($id) => $id == $user->id);
 
@@ -256,9 +255,17 @@ class ChatPermissionService
         $countsQuery = clone $baseQuery;
         $allCount = (clone $countsQuery)->count();
         $superAdminCount = (clone $countsQuery)->whereIn('user_type', ['super_admin', 'admin', 'hq_admin'])->count();
-        $branchAdminCount = (clone $countsQuery)->where('user_type', 'branch_admin')->count();
-        $staffCount = (clone $countsQuery)->whereIn('user_type', ['staff', 'chef', 'waiter', 'cashier'])->count();
-        $driverCount = (clone $countsQuery)->where('user_type', 'driver')->count();
+        $branchAdminCount = (clone $countsQuery)->where(function ($q) {
+            $q->where('user_type', 'branch_admin')->orWhereHas('branchAdmin');
+        })->count();
+        $driverCount = (clone $countsQuery)->where(function ($q) {
+            $q->where('user_type', 'driver')->orWhereHas('driver');
+        })->count();
+        $staffCount = (clone $countsQuery)->where(function ($q) {
+            $q->whereIn('user_type', ['staff', 'chef', 'waiter', 'cashier'])
+              ->whereDoesntHave('driver')
+              ->whereDoesntHave('branchAdmin');
+        })->count();
         $customerCount = (clone $countsQuery)->where('user_type', 'customer')->count();
 
         $summaryCounts = [
@@ -276,9 +283,17 @@ class ChatPermissionService
             if ($normalizedRole === 'super_admin' || $normalizedRole === 'admin' || $normalizedRole === 'hq_admin') {
                 $baseQuery->whereIn('user_type', ['super_admin', 'admin', 'hq_admin']);
             } elseif ($normalizedRole === 'staff') {
-                $baseQuery->whereIn('user_type', ['staff', 'chef', 'waiter', 'cashier']);
+                $baseQuery->whereIn('user_type', ['staff', 'chef', 'waiter', 'cashier'])
+                    ->whereDoesntHave('driver')
+                    ->whereDoesntHave('branchAdmin');
+            } elseif ($normalizedRole === 'driver') {
+                $baseQuery->where(function ($q) {
+                    $q->where('user_type', 'driver')->orWhereHas('driver');
+                });
             } elseif ($normalizedRole === 'branch_manager' || $normalizedRole === 'branch_admin') {
-                $baseQuery->where('user_type', 'branch_admin');
+                $baseQuery->where(function ($q) {
+                    $q->where('user_type', 'branch_admin')->orWhereHas('branchAdmin');
+                });
             } else {
                 $baseQuery->where('user_type', $normalizedRole);
             }
@@ -304,7 +319,7 @@ class ChatPermissionService
             });
         }
 
-        $paginated = $baseQuery->with('role')->latest()->paginate($perPage);
+        $paginated = $baseQuery->with(['role', 'driver', 'branchAdmin'])->latest()->paginate($perPage);
 
         return [
             'summary_counts' => $summaryCounts,
@@ -313,14 +328,15 @@ class ChatPermissionService
             'per_page' => $paginated->perPage(),
             'total' => $paginated->total(),
             'data' => $paginated->getCollection()->map(function ($u) {
+                $effectiveUserType = $this->isDriver($u) ? 'driver' : ($this->isBranchAdmin($u) ? 'branch_admin' : $u->user_type);
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
                     'email' => $u->email,
                     'phone' => $u->phone,
-                    'user_type' => $u->user_type,
+                    'user_type' => $effectiveUserType,
                     'role_id' => $u->role_id,
-                    'role_name' => $u->role?->name ?? ucfirst(str_replace('_', ' ', $u->user_type)),
+                    'role_name' => $u->role?->name ?? ucfirst(str_replace('_', ' ', $effectiveUserType)),
                     'avatar' => $u->avatar_url ?? $u->user_image_url,
                     'branch_id' => $u->branch_id,
                     'is_online' => (bool)$u->is_online,
@@ -336,22 +352,56 @@ class ChatPermissionService
 
     public function isBranchAdmin(User $user): bool
     {
-        return $user->isBranchAdmin() || in_array($user->user_type, ['branch_admin']) || (method_exists($user, 'hasRole') && $user->hasRole(['branch_admin', 'Branch Manager', 'branch_manager']));
+        if ($this->isSuperAdmin($user)) {
+            return false;
+        }
+        return $user->isBranchAdmin() || in_array($user->user_type, ['branch_admin']) || (bool)$user->branchAdmin || (method_exists($user, 'hasRole') && $user->hasRole(['branch_admin', 'Branch Manager', 'branch_manager']));
     }
 
     public function isCustomer(User $user): bool
     {
-        return $user->isCustomer() || $user->user_type === 'customer' || (method_exists($user, 'hasRole') && $user->hasRole('customer'));
+        if ($this->isSuperAdmin($user)) {
+            return false;
+        }
+        return $user->isCustomer() || $user->user_type === 'customer';
     }
 
     public function isDriver(User $user): bool
     {
+        if ($this->isSuperAdmin($user)) {
+            return false;
+        }
         return $user->user_type === 'driver' || (bool)$user->driver || (method_exists($user, 'hasRole') && $user->hasRole(['driver', 'Delivery Driver']));
     }
 
     public function isStaff(User $user): bool
     {
+        if ($this->isSuperAdmin($user)) {
+            return false;
+        }
         return in_array($user->user_type, ['staff', 'chef', 'waiter', 'cashier']) || (method_exists($user, 'hasRole') && $user->hasRole(['staff', 'Chef', 'Waiter', 'Cashier']));
+    }
+
+    public function getBranchAdminUserIds($branchIds): \Illuminate\Support\Collection
+    {
+        $ids = is_array($branchIds) || $branchIds instanceof \Illuminate\Support\Collection
+            ? collect($branchIds)
+            : collect([$branchIds]);
+
+        $validBranchIds = $ids->filter()->unique()->values()->all();
+        if (empty($validBranchIds)) {
+            return collect();
+        }
+
+        $directUserIds = BranchAdmin::whereIn('branch_id', $validBranchIds)
+            ->whereNotNull('user_id')
+            ->pluck('user_id');
+
+        $byEmailUserIds = BranchAdmin::whereIn('branch_id', $validBranchIds)
+            ->join('users', 'branch_admins.email', '=', 'users.email')
+            ->pluck('users.id');
+
+        return $directUserIds->merge($byEmailUserIds)->unique()->values();
     }
 
     public function getUserBranchId(User $user): ?int
