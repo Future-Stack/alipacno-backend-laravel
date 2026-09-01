@@ -82,6 +82,7 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+use App\Http\Controllers\ChatController;
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Page\PageController;
@@ -127,6 +128,8 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/ai-insights', [AiInsightController::class, 'dashboard']);
+    Route::get('dashboard/ai-insights/refresh', [AiInsightController::class, 'refresh']);
 
     // Super Admin / HQ Deliveries Management (Global across all branches)
     Route::get('dashboard/hq/deliveries', [DashboardController::class, 'hqDeliveries']);
@@ -290,6 +293,14 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('notifications', NotificationController::class);
         Route::apiResource('notification-settings', NotificationSettingController::class);
 
+        // Real-time Chat & Messaging System
+        Route::get('chat/contacts', [ChatController::class, 'contacts']);
+        Route::get('conversations', [ChatController::class, 'index']);
+        Route::post('conversations', [ChatController::class, 'store']);
+        Route::get('conversations/{conversation}', [ChatController::class, 'show']);
+        Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/read', [ChatController::class, 'markAsRead']);
+
 
 
 
@@ -362,6 +373,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('scheduled-reports/{scheduled_report}/toggle-status', [ScheduledReportController::class, 'toggleStatus']);
             Route::post('scheduled-reports/{scheduled_report}/run-now', [ScheduledReportController::class, 'runNow']);
             Route::apiResource('scheduled-reports', ScheduledReportController::class);
+            Route::get('ai-insights/dashboard', [AiInsightController::class, 'dashboard']);
+            Route::post('ai-insights/refresh', [AiInsightController::class, 'refresh']);
             Route::apiResource('ai-insights', AiInsightController::class);
             Route::apiResource('ai-recommendations', AiRecommendationController::class);
 
