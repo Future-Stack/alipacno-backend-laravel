@@ -451,9 +451,28 @@ class OrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Handle Manual Driver Assignment by Admin
+        if (!empty($validated['assigned_driver_id'])) {
+            $driverId = $validated['assigned_driver_id'];
+            $driver = Driver::with('user')->find($driverId);
+
+            if ($driver) {
+                $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+                    ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                    ->where('order_id', '!=', $order->id)
+                    ->exists();
+
+                if ($hasActiveDelivery) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Driver '{$driver->name}' is currently on an active delivery task and cannot be assigned.",
+                    ], 422);
+                }
+            }
+        }
+
         $order->update($validated);
 
-        // Handle Manual Driver Assignment by Admin
         if (!empty($validated['assigned_driver_id'])) {
             $driverId = $validated['assigned_driver_id'];
             $driver = Driver::with('user')->find($driverId);
@@ -670,6 +689,18 @@ class OrderController extends Controller
 
         if ($driver->kyc_status !== 'approved') {
             return response()->json(['message' => 'Cannot assign: Driver KYC is not approved yet.'], 422);
+        }
+
+        $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+            ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+            ->where('order_id', '!=', $order->id)
+            ->exists();
+
+        if ($hasActiveDelivery) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign: Driver '{$driver->name}' is currently on an active delivery task."
+            ], 422);
         }
 
         return DB::transaction(function () use ($order, $driver, $validated) {

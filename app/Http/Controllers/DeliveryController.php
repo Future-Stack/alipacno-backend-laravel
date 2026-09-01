@@ -103,6 +103,22 @@ class DeliveryController extends Controller
             ], 422);
         }
 
+        if (!empty($validated['driver_id'])) {
+            $driver = Driver::find($validated['driver_id']);
+            if ($driver) {
+                $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+                    ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                    ->exists();
+
+                if ($hasActiveDelivery) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Driver '{$driver->name}' is currently on an active delivery task and cannot be assigned.",
+                    ], 422);
+                }
+            }
+        }
+
         $delivery = Delivery::create($validated);
 
         if (!empty($validated['driver_id'])) {
@@ -176,6 +192,23 @@ class DeliveryController extends Controller
             'delivery_status' => 'required|in:assigned,picked_up,on_the_way,delivered,failed',
             'estimated_time' => 'nullable|date',
         ]);
+
+        if (isset($validated['driver_id']) && (int)$validated['driver_id'] !== (int)$delivery->driver_id) {
+            $newDriver = Driver::find($validated['driver_id']);
+            if ($newDriver) {
+                $hasActiveDelivery = Delivery::where('driver_id', $newDriver->id)
+                    ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                    ->where('id', '!=', $delivery->id)
+                    ->exists();
+
+                if ($hasActiveDelivery) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Driver '{$newDriver->name}' is currently on an active delivery task and cannot be assigned.",
+                    ], 422);
+                }
+            }
+        }
 
         $status = $validated['delivery_status'];
         $order = $delivery->order;
