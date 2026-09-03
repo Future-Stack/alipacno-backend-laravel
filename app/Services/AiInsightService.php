@@ -54,48 +54,23 @@ class AiInsightService
         $campaignStats = $this->getCampaignAnalytics();
 
         // 2. Derive Top KPI Highlights
-        $topSoldProduct = $productStats['items'][0] ?? [
-            'product_name' => 'Burger Combo Deluxe',
-            'weekly_orders' => 0,
-            'order_growth' => '+0.0%',
-            'badge' => 'High Demand',
-            'image' => null,
-        ];
+        $hasProductData = !empty($productStats['items']);
+        $topSoldProduct = $hasProductData ? $productStats['items'][0] : null;
 
-        $topSoldProductName = $topSoldProduct['product_name'] ?? ($topSoldProduct['name'] ?? 'Burger Combo Deluxe');
-        $topSoldProductGrowth = $topSoldProduct['order_growth'] ?? ($topSoldProduct['growth_percent'] ?? '+28%');
-        $topSoldProductOrders = $topSoldProduct['weekly_orders'] ?? ($topSoldProduct['orders'] ?? 0);
+        $hasAreaData = !empty($areaStats);
+        $topArea = $hasAreaData ? $areaStats[0] : null;
 
-        $topArea = $areaStats[0] ?? [
-            'area_name' => 'Downtown',
-            'total_orders' => 0,
-            'growth' => '+5.0%',
-            'badge' => 'Strong Growth',
-        ];
-        $topAreaName = $topArea['area_name'] ?? 'Downtown';
-        $topAreaOrders = $topArea['total_orders'] ?? ($topArea['orders'] ?? 0);
+        $hasCustomerData = !empty($customerStats);
+        $topCustomer = $hasCustomerData ? $customerStats[0] : null;
 
-        $topCustomer = $customerStats[0] ?? [
-            'name' => 'Valued Customer',
-            'orders' => 0,
-            'growth' => '+10.0%',
-            'badge' => 'VIP Customer',
-            'avatar' => null,
-        ];
-
-        $bestCampaign = $campaignStats['best'] ?? [
-            'name' => 'Seasonal Special',
-            'reached' => 0,
-            'growth_percent' => '+15.0%',
-            'badge' => 'Top Performer',
-        ];
+        $bestCampaign = $campaignStats['best'] ?? null;
 
         // 3. Prepare payload for Gemini AI enrichment
         $summaryForAi = [
-            'top_product' => $topSoldProductName,
-            'top_product_growth' => $topSoldProductGrowth,
-            'top_product_peak' => $topSoldProduct['peak_order_time'] ?? '6PM - 8PM',
-            'top_area' => $topAreaName,
+            'top_product' => $topSoldProduct['product_name'] ?? null,
+            'top_product_growth' => $topSoldProduct['order_growth'] ?? null,
+            'top_product_peak' => $topSoldProduct['peak_order_time'] ?? null,
+            'top_area' => $topArea['area_name'] ?? null,
             'top_selling_products' => array_slice(array_map(function ($item) {
                 return [
                     'name' => $item['product_name'],
@@ -116,7 +91,7 @@ class AiInsightService
                 return [
                     'area' => $area['area_name'],
                     'orders' => $area['total_orders'],
-                    'top_item' => $area['top_items'][0] ?? 'Combo',
+                    'top_item' => $area['top_items'][0] ?? null,
                 ];
             }, $areaStats), 0, 5),
         ];
@@ -128,14 +103,14 @@ class AiInsightService
         $finalProducts = array_map(function ($product, $index) use ($aiEnrichment) {
             $suggestion = $aiEnrichment['product_suggestions'][$product['product_name']] 
                 ?? $aiEnrichment['product_suggestions_indexed'][$index] 
-                ?? "Increase combo promotion in {$product['top_area']} high repeat order rate";
+                ?? null;
             $product['ai_marketing_suggestion'] = $suggestion;
             return $product;
         }, $productStats['items'], array_keys($productStats['items']));
 
         $finalCustomers = array_map(function ($cust, $index) use ($aiEnrichment) {
             $suggestion = $aiEnrichment['customer_suggestions'][$cust['name']] 
-                ?? ($cust['orders'] > 20 ? '20% OFF NEXT ORDERS' : '15% OFF NEXT ORDER');
+                ?? null;
             $cust['ai_suggestion'] = $suggestion;
             return $cust;
         }, $customerStats, array_keys($customerStats));
@@ -147,45 +122,43 @@ class AiInsightService
             'kpis' => [
                 'top_sold_product' => [
                     'title' => 'Top Sold Product',
-                    'name' => $topSoldProductName,
-                    'orders' => $topSoldProductOrders,
-                    'growth' => $topSoldProductGrowth,
-                    'badge' => 'High Demand',
+                    'name' => $topSoldProduct['product_name'] ?? null,
+                    'orders' => (int) ($topSoldProduct['weekly_orders'] ?? 0),
+                    'growth' => $topSoldProduct['order_growth'] ?? null,
+                    'badge' => $hasProductData ? ($topSoldProduct['badge'] ?? 'High Demand') : null,
                     'image' => $topSoldProduct['image'] ?? null,
                 ],
                 'top_ordering_area' => [
                     'title' => 'Top Ordering Area',
-                    'name' => $topAreaName,
-                    'orders' => $topAreaOrders,
-                    'growth' => $topArea['growth'] ?? '+5.4% vs last Week',
-                    'badge' => 'Strong Growth',
+                    'name' => $topArea['area_name'] ?? null,
+                    'orders' => (int) ($topArea['total_orders'] ?? 0),
+                    'growth' => $topArea['growth'] ?? null,
+                    'badge' => $hasAreaData ? ($topArea['badge'] ?? 'Strong Growth') : null,
                 ],
                 'most_loyal_customer' => [
                     'title' => 'Most Loyal Customer',
-                    'name' => $topCustomer['name'],
-                    'orders' => $topCustomer['orders'],
-                    'growth' => $topCustomer['growth'] ?? '+13.4% vs last Week',
-                    'badge' => 'VIP Customer',
+                    'name' => $topCustomer['name'] ?? null,
+                    'orders' => (int) ($topCustomer['orders'] ?? 0),
+                    'growth' => $topCustomer['growth'] ?? null,
+                    'badge' => $hasCustomerData ? ($topCustomer['badge'] ?? 'VIP Customer') : null,
                     'avatar' => $topCustomer['avatar'] ?? null,
                 ],
                 'best_campaign' => [
                     'title' => 'Best Campaign',
-                    'name' => $bestCampaign['name'],
-                    'reached' => $bestCampaign['reached'],
-                    'growth' => $bestCampaign['growth_percent'],
-                    'badge' => 'Top Performer',
+                    'name' => $bestCampaign['name'] ?? null,
+                    'reached' => (int) ($bestCampaign['reached'] ?? 0),
+                    'growth' => $bestCampaign['growth_percent'] ?? null,
+                    'badge' => $bestCampaign ? ($bestCampaign['badge'] ?? 'Top Performer') : null,
                 ],
             ],
             'ai_hero_banner' => [
-                'headline' => $aiEnrichment['hero']['headline'] 
-                    ?? "{$topSoldProductName} demand increased {$topSoldProductGrowth} in {$topAreaName} area.",
-                'recommendation' => $aiEnrichment['hero']['recommendation'] 
-                    ?? "Run 'Buy 1 Get Free Fries' campaign between " . ($topSoldProduct['peak_order_time'] ?? '6PM - 8PM') . ".",
+                'headline' => $aiEnrichment['hero']['headline'] ?? null,
+                'recommendation' => $aiEnrichment['hero']['recommendation'] ?? null,
             ],
-            'top_selling_products' => array_slice($finalProducts, 0, 8),
-            'top_customers' => array_slice($finalCustomers, 0, 8),
-            'top_ordering_areas' => array_slice($areaStats, 0, 8),
-            'ai_recommended_campaigns' => $aiEnrichment['campaigns'],
+            'top_selling_products' => array_values(array_slice($finalProducts, 0, 8)),
+            'top_customers' => array_values(array_slice($finalCustomers, 0, 8)),
+            'top_ordering_areas' => array_values(array_slice($areaStats, 0, 8)),
+            'ai_recommended_campaigns' => array_values($aiEnrichment['campaigns'] ?? []),
         ];
     }
 
@@ -287,9 +260,87 @@ class AiInsightService
             ];
         }
 
-        // Default mock items if database has fresh/little data
         if (empty($formatted)) {
-            $formatted = $this->getDefaultMockProducts();
+            $menuItems = MenuItem::limit(5)->get();
+            if ($menuItems->isNotEmpty()) {
+                foreach ($menuItems as $m) {
+                    $formatted[] = [
+                        'product_id' => $m->id,
+                        'product_name' => $m->name,
+                        'image' => $m->image ? asset($m->image) : null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ];
+                }
+            } else {
+                $formatted = [
+                    [
+                        'product_id' => 1,
+                        'product_name' => 'Burger Combo Deluxe',
+                        'image' => null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ],
+                    [
+                        'product_id' => 2,
+                        'product_name' => 'Pepperoni Pizza',
+                        'image' => null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ],
+                    [
+                        'product_id' => 3,
+                        'product_name' => 'Chicken Wings',
+                        'image' => null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ],
+                    [
+                        'product_id' => 4,
+                        'product_name' => 'Margarita Pizza',
+                        'image' => null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ],
+                    [
+                        'product_id' => 5,
+                        'product_name' => 'Zero Cola 330ml',
+                        'image' => null,
+                        'weekly_orders' => 0,
+                        'order_growth' => '0%',
+                        'total_qty_sold' => 0,
+                        'revenue' => 0.0,
+                        'revenue_formatted' => '£0.00',
+                        'peak_order_time' => '—',
+                        'top_area' => '—',
+                    ],
+                ];
+            }
         }
 
         return ['items' => $formatted];
@@ -328,12 +379,12 @@ class AiInsightService
             $favItem = DB::table('order_items')
                 ->join('orders', 'orders.id', '=', 'order_items.order_id')
                 ->where('orders.user_id', $cust->user_id)
-                ->select(DB::raw('COALESCE(order_items.item_name, "Burger Combo") as item_name'), DB::raw('SUM(order_items.quantity) as qty'))
+                ->select(DB::raw('COALESCE(order_items.item_name, "N/A") as item_name'), DB::raw('SUM(order_items.quantity) as qty'))
                 ->groupBy('item_name')
                 ->orderByDesc('qty')
                 ->first();
 
-            $favName = $favItem?->item_name ?: 'Burger Combo';
+            $favName = $favItem?->item_name ?: '—';
 
             $formatted[] = [
                 'customer_id' => $cust->user_id,
@@ -343,12 +394,79 @@ class AiInsightService
                 'avg_order_value' => '£' . number_format($cust->avg_spent, 2),
                 'favorite_item' => $favName,
                 'total_spend' => '£' . number_format($cust->total_spent, 2),
-                'growth' => '+13.4% vs last Week',
+                'growth' => '0%',
             ];
         }
 
         if (empty($formatted)) {
-            $formatted = $this->getDefaultMockCustomers();
+            $users = User::limit(5)->get();
+            if ($users->isNotEmpty()) {
+                foreach ($users as $u) {
+                    $formatted[] = [
+                        'customer_id' => $u->id,
+                        'name' => $u->name,
+                        'avatar' => $u->avatar ? asset($u->avatar) : null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ];
+                }
+            } else {
+                $formatted = [
+                    [
+                        'customer_id' => 1,
+                        'name' => 'James Smith',
+                        'avatar' => null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ],
+                    [
+                        'customer_id' => 2,
+                        'name' => 'William Smith',
+                        'avatar' => null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ],
+                    [
+                        'customer_id' => 3,
+                        'name' => 'Michael Brown',
+                        'avatar' => null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ],
+                    [
+                        'customer_id' => 4,
+                        'name' => 'David Wilson',
+                        'avatar' => null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ],
+                    [
+                        'customer_id' => 5,
+                        'name' => 'Emma Taylor',
+                        'avatar' => null,
+                        'orders' => 0,
+                        'avg_order_value' => '£0.00',
+                        'favorite_item' => '—',
+                        'total_spend' => '£0.00',
+                        'growth' => '0%',
+                    ],
+                ];
+            }
         }
 
         return $formatted;
@@ -395,10 +513,6 @@ class AiInsightService
                 ->map(fn($item) => '#' . strtoupper(str_replace(' ', '_', $item)))
                 ->toArray();
 
-            if (empty($topItems)) {
-                $topItems = ['#BURGER_COMBO', '#PIZZA', '#CHICKEN_WINGS'];
-            }
-
             $formatted[] = [
                 'area_name' => $area->area_name,
                 'total_orders' => (int) $area->total_orders,
@@ -407,12 +521,73 @@ class AiInsightService
                 'total_spend' => '£' . number_format($area->total_spent, 2),
                 'top_items' => $topItems,
                 'badge' => $badges[$index % count($badges)],
-                'growth' => '+5.4% vs last Week',
+                'growth' => '0%',
             ];
         }
 
         if (empty($formatted)) {
-            $formatted = $this->getDefaultMockAreas();
+            $formatted = [
+                [
+                    'area_name' => 'Down Street',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#BURGER_COMBO'],
+                    'badge' => 'RECOMMENDED',
+                    'growth' => '0%',
+                ],
+                [
+                    'area_name' => 'Midland',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#PIZZA'],
+                    'badge' => 'STANDARD',
+                    'growth' => '0%',
+                ],
+                [
+                    'area_name' => 'Midland North',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#PIZZA'],
+                    'badge' => 'HIGH POTENTIAL',
+                    'growth' => '0%',
+                ],
+                [
+                    'area_name' => 'Brickwood',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#CHICKEN_WINGS'],
+                    'badge' => 'RECOMMENDED',
+                    'growth' => '0%',
+                ],
+                [
+                    'area_name' => 'Carlisle',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#MARGARITA_PIZZA'],
+                    'badge' => 'STANDARD',
+                    'growth' => '0%',
+                ],
+                [
+                    'area_name' => 'Westside',
+                    'total_orders' => 0,
+                    'avg_order_value' => '£0.00',
+                    'peak_hours' => '—',
+                    'total_spend' => '£0.00',
+                    'top_items' => ['#SOFT_DRINKS'],
+                    'badge' => 'GROWING',
+                    'growth' => '0%',
+                ],
+            ];
         }
 
         return $formatted;
@@ -424,15 +599,19 @@ class AiInsightService
     protected function getCampaignAnalytics(): array
     {
         $best = Campaign::leftJoin('campaign_statistics', 'campaign_statistics.campaign_id', '=', 'campaigns.id')
-            ->select('campaigns.name', DB::raw('COALESCE(campaign_statistics.delivered, campaign_statistics.sent, 4582) as reached'))
+            ->select('campaigns.name', DB::raw('COALESCE(campaign_statistics.delivered, campaign_statistics.sent, 0) as reached'))
             ->orderByDesc('reached')
             ->first();
 
+        if (!$best) {
+            return ['best' => null];
+        }
+
         return [
             'best' => [
-                'name' => $best?->name ?: 'Burger Night Promo',
-                'reached' => $best?->reached ?: 4582,
-                'growth_percent' => '+22% vs last Week',
+                'name' => $best->name,
+                'reached' => (int) $best->reached,
+                'growth_percent' => '0%',
                 'badge' => 'Top Performer',
             ],
         ];
@@ -558,17 +737,18 @@ PROMPT;
      */
     protected function getRuleBasedFallback(array $data): array
     {
-        $topProduct = $data['top_product'] ?? 'Burger Combo Deluxe';
-        $topGrowth = $data['top_product_growth'] ?? '+28%';
-        $topArea = $data['top_area'] ?? 'Downtown';
+        $hasProducts = !empty($data['top_selling_products']);
+        $topProduct = $data['top_product'] ?? 'No Sales Data';
+        $topGrowth = $data['top_product_growth'] ?? '0%';
+        $topArea = $data['top_area'] ?? 'N/A';
         $peakTime = $data['top_product_peak'] ?? '6PM - 8PM';
 
         $productSuggestions = [];
-        if (!empty($data['top_selling_products'])) {
+        if ($hasProducts) {
             foreach ($data['top_selling_products'] as $prod) {
                 $name = $prod['name'];
                 $area = $prod['top_area'] ?? 'Downtown';
-                $productSuggestions[$name] = "Increase combo promotion in {$area} high-repeat order rate";
+                $productSuggestions[$name] = "Increase combo promotion in {$area} area";
             }
         }
 
@@ -580,53 +760,55 @@ PROMPT;
             }
         }
 
+        $headline = $hasProducts 
+            ? "{$topProduct} demand increased {$topGrowth} in {$topArea} area."
+            : 'No sufficient sales data found for this period.';
+
+        $recommendation = $hasProducts
+            ? "Run 'Buy 1 Get Free Fries' campaign between {$peakTime}."
+            : 'Start taking customer orders to receive AI-powered marketing recommendations.';
+
         return [
             'is_ai_powered' => false,
             'hero' => [
-                'headline' => "{$topProduct} demand increased {$topGrowth} in {$topArea} area.",
-                'recommendation' => "Run 'Buy 1 Get Free Fries' campaign between {$peakTime}.",
+                'headline' => $headline,
+                'recommendation' => $recommendation,
             ],
             'product_suggestions' => $productSuggestions,
-            'product_suggestions_indexed' => [
-                0 => 'Increase combo promotion in downtown high-repeat order rate',
-                1 => 'Target evening snackers with 15% discount bundle',
-                2 => 'Cross-sell beverage with spicy chicken sides',
-                3 => 'Introduce family combo deal on weekends',
-                4 => 'Push beverage add-ons during lunchtime',
-            ],
+            'product_suggestions_indexed' => [],
             'customer_suggestions' => $customerSuggestions,
             'campaigns' => [
                 [
                     'badge' => 'Recommended',
                     'title' => 'Burger Combo Offer',
                     'description' => 'Buy 1 Burger Combo Get Free Fries',
-                    'target_area' => 'Downtown Urban',
-                    'est_reach' => '8,250 people',
-                    'est_upsell' => '4,250 people',
+                    'target_area' => 'Down Street',
+                    'est_reach' => '0 people',
+                    'est_upsell' => '0 people',
                 ],
                 [
                     'badge' => 'High Impact',
                     'title' => 'Weekend Pizza Deal',
                     'description' => '20% OFF on Large Pizza',
-                    'target_area' => 'All Area',
-                    'est_reach' => '12,500 people',
-                    'est_upsell' => '8,200 people',
+                    'target_area' => 'Midland',
+                    'est_reach' => '0 people',
+                    'est_upsell' => '0 people',
                 ],
                 [
                     'badge' => 'Recover Customer',
                     'title' => 'We Miss You Offer',
-                    'description' => '15% OFF for inactive customers',
-                    'target_area' => 'Downtown Urban',
-                    'est_reach' => '850 people',
-                    'est_upsell' => '4,250 people',
+                    'description' => '15% OFF for loyal repeat customers',
+                    'target_area' => 'Carlisle',
+                    'est_reach' => '0 people',
+                    'est_upsell' => '0 people',
                 ],
                 [
                     'badge' => 'Loyalty Boost',
                     'title' => 'VIP Loyalty Reward',
-                    'description' => 'Free Dessert on Silver Order',
-                    'target_area' => 'Downtown Area',
-                    'est_reach' => '4,250 people',
-                    'est_upsell' => '1,250 people',
+                    'description' => 'Free Drink on Top Spender Order',
+                    'target_area' => 'Brickwood',
+                    'est_reach' => '0 people',
+                    'est_upsell' => '0 people',
                 ],
             ],
         ];
@@ -646,200 +828,5 @@ PROMPT;
 
         return "{$startHour12}{$startAmPm} - {$endHour12}{$endAmPm}";
     }
-
-    /**
-     * Default Mock Products for instant UI rendering if database is fresh.
-     */
-    protected function getDefaultMockProducts(): array
-    {
-        return [
-            [
-                'product_id' => 1,
-                'product_name' => 'Burger Combo Deluxe',
-                'image' => null,
-                'weekly_orders' => 1248,
-                'order_growth' => '+28%',
-                'total_qty_sold' => 1450,
-                'revenue' => 19022.00,
-                'revenue_formatted' => '£19,022',
-                'peak_order_time' => '6PM - 8PM',
-                'top_area' => 'DOWNTOWN',
-                'ai_marketing_suggestion' => 'Increase combo promotion in downtown high-repeat order rate',
-            ],
-            [
-                'product_id' => 2,
-                'product_name' => 'Pepperoni Pizza',
-                'image' => null,
-                'weekly_orders' => 1248,
-                'order_growth' => '+32%',
-                'total_qty_sold' => 1448,
-                'revenue' => 18822.00,
-                'revenue_formatted' => '£18,822',
-                'peak_order_time' => '7PM - 9PM',
-                'top_area' => 'DOWNTOWN',
-                'ai_marketing_suggestion' => 'Increase combo promotion in downtown high-repeat order rate',
-            ],
-            [
-                'product_id' => 3,
-                'product_name' => 'Chicken Wings',
-                'image' => null,
-                'weekly_orders' => 1248,
-                'order_growth' => '+45%',
-                'total_qty_sold' => 1450,
-                'revenue' => 16022.00,
-                'revenue_formatted' => '£16,022',
-                'peak_order_time' => '6PM - 9PM',
-                'top_area' => 'DOWNTOWN',
-                'ai_marketing_suggestion' => 'Increase combo promotion in downtown high-repeat order rate',
-            ],
-            [
-                'product_id' => 4,
-                'product_name' => 'Margarita Pizza',
-                'image' => null,
-                'weekly_orders' => 1248,
-                'order_growth' => '+18%',
-                'total_qty_sold' => 1448,
-                'revenue' => 19822.00,
-                'revenue_formatted' => '£19,822',
-                'peak_order_time' => '7PM - 9PM',
-                'top_area' => 'DOWNTOWN',
-                'ai_marketing_suggestion' => 'Increase combo promotion in downtown high-repeat order rate',
-            ],
-            [
-                'product_id' => 5,
-                'product_name' => 'Zero Cola 330ml',
-                'image' => null,
-                'weekly_orders' => 1248,
-                'order_growth' => '+12%',
-                'total_qty_sold' => 1450,
-                'revenue' => 16522.00,
-                'revenue_formatted' => '£16,522',
-                'peak_order_time' => '6PM - 9PM',
-                'top_area' => 'DOWNTOWN',
-                'ai_marketing_suggestion' => 'Increase combo promotion in downtown high-repeat order rate',
-            ],
-        ];
-    }
-
-    /**
-     * Default Mock Customers for instant UI rendering.
-     */
-    protected function getDefaultMockCustomers(): array
-    {
-        return [
-            [
-                'customer_id' => 1,
-                'name' => 'James Smith',
-                'avatar' => null,
-                'orders' => 34,
-                'avg_order_value' => '£29.90',
-                'favorite_item' => 'Burger Combo',
-                'total_spend' => '£1,020',
-                'ai_suggestion' => '20% OFF NEXT OFFERS',
-            ],
-            [
-                'customer_id' => 2,
-                'name' => 'William Smith',
-                'avatar' => null,
-                'orders' => 34,
-                'avg_order_value' => '£29.90',
-                'favorite_item' => 'Burger Combo',
-                'total_spend' => '£1,020',
-                'ai_suggestion' => '20% OFF NEXT OFFERS',
-            ],
-            [
-                'customer_id' => 3,
-                'name' => 'Michael Brown',
-                'avatar' => null,
-                'orders' => 34,
-                'avg_order_value' => '£29.90',
-                'favorite_item' => 'Burger Combo',
-                'total_spend' => '£1,020',
-                'ai_suggestion' => '20% OFF NEXT OFFERS',
-            ],
-            [
-                'customer_id' => 4,
-                'name' => 'David Wilson',
-                'avatar' => null,
-                'orders' => 34,
-                'avg_order_value' => '£29.90',
-                'favorite_item' => 'Burger Combo',
-                'total_spend' => '£1,020',
-                'ai_suggestion' => '20% OFF NEXT OFFERS',
-            ],
-            [
-                'customer_id' => 5,
-                'name' => 'Emma Taylor',
-                'avatar' => null,
-                'orders' => 34,
-                'avg_order_value' => '£29.90',
-                'favorite_item' => 'Burger Combo',
-                'total_spend' => '£1,020',
-                'ai_suggestion' => '20% OFF NEXT OFFERS',
-            ],
-        ];
-    }
-
-    /**
-     * Default Mock Areas for instant UI rendering.
-     */
-    protected function getDefaultMockAreas(): array
-    {
-        return [
-            [
-                'area_name' => 'Down Street',
-                'total_orders' => 2658,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '—',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#BURGER_COMBO'],
-                'badge' => 'RECOMMENDED',
-            ],
-            [
-                'area_name' => 'Midland',
-                'total_orders' => 2658,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '—',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#PIZZA'],
-                'badge' => 'STANDARD',
-            ],
-            [
-                'area_name' => 'Midland North',
-                'total_orders' => 2058,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '6PM-10PM',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#PIZZA'],
-                'badge' => 'HIGH POTENTIAL',
-            ],
-            [
-                'area_name' => 'Brickwood',
-                'total_orders' => 2058,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '6PM-10PM',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#CHICKEN_WINGS'],
-                'badge' => 'RECOMMENDED',
-            ],
-            [
-                'area_name' => 'Carlisle',
-                'total_orders' => 2898,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '6PM-10PM',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#MARGARITA_PIZZA'],
-                'badge' => 'STANDARD',
-            ],
-            [
-                'area_name' => 'Westside',
-                'total_orders' => 2058,
-                'avg_order_value' => '£24,502',
-                'peak_hours' => '6PM-10PM',
-                'total_spend' => 'Burger Combo',
-                'top_items' => ['#SOFT_DRINKS'],
-                'badge' => 'GROWING',
-            ],
-        ];
-    }
 }
+
