@@ -55,7 +55,7 @@ class OrderController extends Controller
                 $query->where('user_id', $authUser->id);
             } elseif ($authUser->isBranchAdmin() || in_array($authUser->user_type, ['branch_admin', 'staff', 'driver']) || (method_exists($authUser, 'hasRole') && $authUser->hasRole(['Branch Manager', 'branch_admin', 'Cashier', 'cashier', 'Chef', 'chef', 'Waiter', 'waiter', 'Delivery Driver', 'driver']))) {
                 // Automatically detect branch for branch-scoped staff and managers
-                $userBranchId = $authUser->branch_id 
+                $userBranchId = $authUser->branch_id
                     ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
                     ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
                     ?? $authUser->driver?->branch_id;
@@ -328,31 +328,52 @@ class OrderController extends Controller
                 //Payment Gateway Starts
                 $stripe = new StripeClient(config('services.stripe.secret'));
 
+//                $session = $stripe->checkout->sessions->create([
+//                    'line_items' => [[
+//                        'price_data' => [
+//                            'currency' => 'usd',
+//                            'product_data' => [
+//                                'name' => 'Restaurant Menuitem Order',
+//                            ],
+//                            'unit_amount' => (int)($order->total * 100),
+//                        ],
+//                        'quantity' => 1,
+//                    ]],
+//                    'mode' => 'payment',
+//
+//                    'metadata' => [
+//                        'payment_id' => $payment->id,
+//                    ],
+//
+//
+//
+//                    // ✅ IMPORTANT: api + v1 prefix
+//                    'success_url' => url('/api/v1/order/success') . '?session_id={CHECKOUT_SESSION_ID}',
+//                    'cancel_url' => url('/api/v1/order/cancel'),
+//                ]);
+
                 $session = $stripe->checkout->sessions->create([
+                    'payment_method_types' => ['card'],
                     'line_items' => [[
                         'price_data' => [
                             'currency' => 'usd',
                             'product_data' => [
                                 'name' => 'Restaurant Menuitem Order',
                             ],
-                            'unit_amount' => (int)($order->total * 100),
+                            // Ensure integer cents casting safely
+                            'unit_amount' => (int) round($order->total * 100),
                         ],
                         'quantity' => 1,
                     ]],
                     'mode' => 'payment',
-
                     'metadata' => [
-                        'payment_id' => $payment->id,
+                        'payment_id' => (string) $payment->id,
+                        'order_id'   => (string) $order->id,
                     ],
-
-
-
-                    // ✅ IMPORTANT: api + v1 prefix
-                    'success_url' => url('/api/v1/order/success') . '?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url' => url('/api/v1/order/cancel'),
+                    // Frontend redirect routes (Customer browser flow)
+                    'success_url' => url('/api/v1/order/success') .'?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url'  => url('/api/v1/order/cancel'),
                 ]);
-
-
             }
 
             // 1. Broadcast real-time order creation to Branch Admin & Kitchen (Kanban / POS)
