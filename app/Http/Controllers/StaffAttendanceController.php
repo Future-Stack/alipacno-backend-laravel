@@ -112,28 +112,66 @@ class StaffAttendanceController extends Controller
     }
 
     /**
-     * Clock in staff at current timestamp.
+     * Clock in staff/driver at current timestamp.
      */
     public function clockIn(Request $request)
     {
         $validated = $request->validate([
-            'staff_id' => 'required|exists:staff,id',
+            'staff_id' => 'nullable|exists:staff,id',
             'status' => 'nullable|string|in:present,late',
         ]);
 
-        $activeAttendance = StaffAttendance::where('staff_id', $validated['staff_id'])
+        $staffId = $validated['staff_id'] ?? null;
+
+        // Auto-resolve or create linked staff record from authenticated user (e.g. Driver)
+        if (!$staffId && $request->user()) {
+            $authUser = $request->user();
+            if ($authUser->driver) {
+                $driver = $authUser->driver;
+                $staff = \App\Models\Staff::where('user_id', $authUser->id)
+                    ->orWhere('id', $driver->staff_id)
+                    ->first();
+
+                if (!$staff) {
+                    $staff = \App\Models\Staff::create([
+                        'user_id' => $authUser->id,
+                        'employee_id' => 'DRV-' . str_pad((string) $driver->id, 4, '0', STR_PAD_LEFT),
+                        'branch_id' => $driver->branch_id ?? 1,
+                        'name' => $driver->name ?? ($authUser->name ?? 'Driver'),
+                        'phone' => $driver->phone ?? ($authUser->phone ?? ''),
+                        'status' => 'active',
+                    ]);
+                }
+
+                if ($driver->staff_id !== $staff->id) {
+                    $driver->update(['staff_id' => $staff->id]);
+                }
+
+                $staffId = $staff->id;
+            } elseif ($authUser->staff) {
+                $staffId = $authUser->staff->id;
+            }
+        }
+
+        if (!$staffId) {
+            return response()->json([
+                'message' => 'Staff ID is required or user must have an associated staff/driver profile.',
+            ], 422);
+        }
+
+        $activeAttendance = StaffAttendance::where('staff_id', $staffId)
             ->whereNull('clock_out')
             ->first();
 
         if ($activeAttendance) {
             return response()->json([
-                'message' => 'Staff is already clocked in.',
+                'message' => 'You are already clocked in.',
                 'data' => $activeAttendance->load('staff'),
             ], 422);
         }
 
         $attendance = StaffAttendance::create([
-            'staff_id' => $validated['staff_id'],
+            'staff_id' => $staffId,
             'clock_in' => now(),
             'status' => $validated['status'] ?? 'present',
         ]);
@@ -146,10 +184,35 @@ class StaffAttendanceController extends Controller
     }
 
     /**
-     * Clock out staff at current timestamp and calculate total hours.
+     * Clock out staff/driver at current timestamp and calculate total hours.
      */
-    public function clockOut(Request $request, StaffAttendance $staffAttendance)
+    public function clockOut(Request $request, ?StaffAttendance $staffAttendance = null)
     {
+        // Auto-resolve active attendance for authenticated user if not passed in route parameter
+        if (!$staffAttendance || !$staffAttendance->exists) {
+            $authUser = $request->user();
+            if ($authUser) {
+                $staffId = $authUser->staff?->id ?? $authUser->driver?->staff_id;
+                if (!$staffId && $authUser->driver) {
+                    $staff = \App\Models\Staff::where('user_id', $authUser->id)->first();
+                    $staffId = $staff?->id;
+                }
+
+                if ($staffId) {
+                    $staffAttendance = StaffAttendance::where('staff_id', $staffId)
+                        ->whereNull('clock_out')
+                        ->latest()
+                        ->first();
+                }
+            }
+        }
+
+        if (!$staffAttendance || !$staffAttendance->exists) {
+            return response()->json([
+                'message' => 'No active clocked-in session found to clock out.',
+            ], 404);
+        }
+
         if ($staffAttendance->clock_out !== null) {
             return response()->json([
                 'message' => 'Staff has already clocked out.',
@@ -168,6 +231,7 @@ class StaffAttendanceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Clocked out successfully.',
+            'total_hours' => $totalHours,
             'data' => $staffAttendance->load('staff'),
         ]);
     }
