@@ -622,6 +622,22 @@ class DriverController extends Controller
             ], 400);
         }
 
+        $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+            ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+            ->exists();
+
+        if ($hasActiveDelivery || $driver->status === 'on_delivery') {
+            if (!$hasActiveDelivery) {
+                // Auto sync if status was stuck
+                $driver->update(['status' => 'available']);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are currently on an active delivery task. Please complete your ongoing delivery first.'
+                ], 422);
+            }
+        }
+
         // Concurrency-safe execution with pessimistic locking
         return DB::transaction(function () use ($order, $driver) {
             $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
