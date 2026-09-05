@@ -858,19 +858,12 @@ $deliverySummary = [
 
         $totalHours = $completedHours + $currentHours;
 
-        // 3. Today's Sales & Orders for this branch
-        $ordersToday = \App\Models\Order::where('branch_id', $branch_id)
-            ->whereDate('created_at', $today)
-            ->where('order_status', '!=', 'cancelled');
-
-        $staffSales = (clone $ordersToday)->sum('total') ?: 0;
-
-        // Calculate commissions (5% default or based on staff commission rate)
         $staffMembers = Staff::with('role')
             ->where('branch_id', $branch_id)
             ->whereNull('deleted_at')
             ->get();
 
+        $totalStaffSales = 0;
         $totalCommissions = 0;
         $staffTable = [];
 
@@ -892,18 +885,23 @@ $deliverySummary = [
                 }
             }
 
-            // Calculate staff sales
+            // Calculate actual staff sales if assigned
             $assignedSales = \App\Models\Order::where('branch_id', $branch_id)
                 ->where('assigned_staff_id', $s->id)
                 ->whereDate('created_at', $today)
                 ->where('order_status', '!=', 'cancelled')
                 ->sum('total');
 
-            // If no individual assigned sales, distribute proportionally or calculate from orders
-            $salesVal = (float) $assignedSales;
-            $commRate = $s->commission ? ($s->commission / 100) : 0.05; // 5% default
-            $commAmount = $salesVal > 0 ? ($salesVal * $commRate) : 0;
-            $totalCommissions += $commAmount;
+            $staffSalesVal = (float) ($assignedSales ?: 0);
+            $totalStaffSales += $staffSalesVal;
+
+            // Calculate commission only if staff has a commission rate configured and has sales
+            $commRate = ($s->commission !== null && (float) $s->commission > 0) ? ((float) $s->commission / 100) : null;
+            $commAmount = ($staffSalesVal > 0 && $commRate !== null) ? round($staffSalesVal * $commRate, 2) : 0;
+
+            if ($commAmount > 0) {
+                $totalCommissions += $commAmount;
+            }
 
             $staffTable[] = [
                 'id' => '#' . str_pad($s->id, 3, '0', STR_PAD_LEFT),
@@ -914,17 +912,15 @@ $deliverySummary = [
                 'clock_in' => $latestAttendance?->clock_in ? Carbon::parse($latestAttendance->clock_in)->format('h:i A') : '--:--',
                 'clock_out' => $latestAttendance?->clock_out ? Carbon::parse($latestAttendance->clock_out)->format('h:i A') : '--:--',
                 'hours_today' => $hours > 0 ? "{$hours}h" : '--',
-                'sales' => $salesVal > 0 ? '£' . number_format($salesVal, 2) : '--',
-                'sales_raw' => $salesVal,
+                'sales' => $staffSalesVal > 0 ? '£' . number_format($staffSalesVal, 2) : '£0.00',
+                'sales_raw' => $staffSalesVal,
+                'commission_rate' => $s->commission !== null ? (float) $s->commission : null,
+                'commission' => $commAmount > 0 ? '£' . number_format($commAmount, 2) : ($s->commission ? '£0.00' : '--'),
+                'commission_raw' => $commAmount,
                 'status' => $isOnDuty ? 'On Duty' : 'Off Duty',
                 'is_on_duty' => $isOnDuty,
                 'latest_attendance_id' => $latestAttendance?->id,
             ];
-        }
-
-        // If totalCommissions is 0 but staffSales > 0, provide default 5% commission metric
-        if ($totalCommissions == 0 && $staffSales > 0) {
-            $totalCommissions = $staffSales * 0.05;
         }
 
         return response()->json([
@@ -940,8 +936,8 @@ $deliverySummary = [
                     'display' => round($totalHours, 1) . 'h',
                 ],
                 'staff_sales' => [
-                    'value' => round($staffSales, 2),
-                    'display' => '£' . number_format($staffSales, 2),
+                    'value' => round($totalStaffSales, 2),
+                    'display' => '£' . number_format($totalStaffSales, 2),
                 ],
                 'commissions' => [
                     'value' => round($totalCommissions, 2),
