@@ -260,6 +260,21 @@ class CampaignAutomationFlowController extends Controller
                 }
             }
 
+            // E. Real-time SMS Dispatch via Twilio (if channel is SMS and user has valid phone)
+            if ($normalizedType === 'sms' && !empty($user->phone)) {
+                try {
+                    $twilio = app(\App\Services\TwilioService::class);
+                    if ($twilio->isConfigured()) {
+                        $smsResult = $twilio->sendSms($user->phone, $description);
+                        if (!($smsResult['success'] ?? false)) {
+                            \Illuminate\Support\Facades\Log::warning("Twilio Marketing SMS dispatch failed for user #{$user->id} ({$user->phone}): " . ($smsResult['message'] ?? 'Unknown error'));
+                        }
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning("Twilio Marketing SMS exception for user #{$user->id} ({$user->phone}): " . $e->getMessage());
+                }
+            }
+
             \Illuminate\Support\Facades\Log::info("Campaign [{$campaign->id}] [{$normalizedType}] dispatched to User #{$user->id} ({$user->name} | {$user->phone} | {$user->email}): {$description}");
             $recipientCount++;
         }
