@@ -55,6 +55,7 @@ use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DeliveryController;
 
 use App\Http\Controllers\CallLogController;
+use App\Http\Controllers\TwilioWebhookController;
 use App\Http\Controllers\CustomerTagController;
 use App\Http\Controllers\CustomerNoteController;
 use App\Http\Controllers\CustomerSegmentController;
@@ -418,8 +419,13 @@ Route::prefix('v1')->group(function () {
         });
 
         // CRM & Marketing
-        Route::middleware('role:super_admin,hq_admin,branch_admin,marketing_manager')->group(function () {
+        Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff,marketing_manager')->group(function () {
+            Route::get('call-logs/overview', [CallLogController::class, 'overview']);
             Route::get('call-logs/stats', [CallLogController::class, 'stats']);
+            Route::get('call-logs/converted-orders', [CallLogController::class, 'convertedOrders']);
+            Route::get('call-logs/history', [CallLogController::class, 'history']);
+            Route::post('call-logs/{call_log}/convert-order', [CallLogController::class, 'convertOrder']);
+            Route::post('call-logs/{call_log}/callback', [CallLogController::class, 'logCallback']);
             Route::apiResource('call-logs', CallLogController::class);
             Route::post('customer-tags/bulk', [CustomerTagController::class, 'bulkStore']);
             Route::apiResource('customer-tags', CustomerTagController::class);
@@ -480,8 +486,19 @@ Route::prefix('v1')->group(function () {
     //Stripe
     Route::get('/order/success', [StripeController::class, 'OrderSuccess']);
     Route::get('/order/cancel', [StripeController::class, 'OrderCancel']);
-
     Route::post('/order/webhook-handle', [StripeController::class, 'handleWebhook']);
+
+    // Twilio Public Voice & Callback Webhooks
+    Route::prefix('twilio')->group(function () {
+        Route::post('voice', [TwilioWebhookController::class, 'voice']);
+        Route::match(['get', 'post'], 'status-callback', [TwilioWebhookController::class, 'statusCallback']);
+        Route::post('recording-callback', [TwilioWebhookController::class, 'recordingCallback']);
+    });
+
+    // Twilio Authenticated Click-to-Call
+    Route::middleware(['auth:sanctum'])->group(function () {
+        Route::post('twilio/make-call', [TwilioWebhookController::class, 'makeCall']);
+    });
 
 });
 

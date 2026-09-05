@@ -200,4 +200,74 @@ class CallLogTest extends TestCase
                 'missed_calls' => 1,
             ]);
     }
+
+    public function test_can_get_call_log_overview(): void
+    {
+        CallLog::create([
+            'branch_id' => $this->branch->id,
+            'phone' => '+1000000001',
+            'call_status' => 'answered',
+            'call_duration' => 240,
+            'call_outcome' => 'converted',
+            'started_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->getJson('/api/v1/call-logs/overview');
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'summary' => [
+                    'total_calls',
+                    'call_converted',
+                    'missed_calls',
+                    'conversion_rate',
+                    'avg_call_duration',
+                ],
+                'call_logs_panel',
+                'converted_orders',
+                'history_logs',
+                'stats',
+                'daily_trend',
+                'period',
+            ]);
+    }
+
+    public function test_can_get_converted_orders(): void
+    {
+        $log = CallLog::create([
+            'branch_id' => $this->branch->id,
+            'phone' => '+1000000001',
+            'call_status' => 'answered',
+            'call_duration' => 180,
+            'call_outcome' => 'converted',
+            'started_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->getJson('/api/v1/call-logs/converted-orders');
+
+        $response->assertStatus(200)
+            ->assertJsonFragment(['call_number' => '+1000000001']);
+    }
+
+    public function test_can_get_history(): void
+    {
+        CallLog::create([
+            'branch_id' => $this->branch->id,
+            'phone' => '+1000000001',
+            'customer_name' => 'Brooklyn Simmons',
+            'postcode' => 'EL01',
+            'call_status' => 'answered',
+            'call_duration' => 138,
+            'call_outcome' => 'converted',
+            'started_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->getJson('/api/v1/call-logs/history');
+
+        $response->assertStatus(200)
+            ->assertJsonFragment(['customer_name' => 'Brooklyn Simmons']);
+    }
 }

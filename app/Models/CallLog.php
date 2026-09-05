@@ -19,6 +19,12 @@ class CallLog extends Model
         'ended_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'duration_formatted',
+        'formatted_time',
+        'formatted_date',
+    ];
+
     public function branch()
     {
         return $this->belongsTo(Branch::class, 'branch_id');
@@ -37,6 +43,43 @@ class CallLog extends Model
     public function order()
     {
         return $this->belongsTo(Order::class, 'order_id');
+    }
+
+    /**
+     * Accessor for formatted duration (e.g. "04:12" or "01:23:45").
+     */
+    public function getDurationFormattedAttribute(): string
+    {
+        $seconds = (int) ($this->call_duration ?? 0);
+        if ($seconds < 0) {
+            $seconds = 0;
+        }
+
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $secs = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%02d:%02d:%02d', $hours, $minutes, $secs);
+        }
+
+        return sprintf('%02d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Accessor for formatted call time (e.g. "08:42 PM").
+     */
+    public function getFormattedTimeAttribute(): ?string
+    {
+        return $this->started_at ? $this->started_at->format('h:i A') : ($this->created_at ? $this->created_at->format('h:i A') : null);
+    }
+
+    /**
+     * Accessor for formatted call date (e.g. "May 04, 2026").
+     */
+    public function getFormattedDateAttribute(): ?string
+    {
+        return $this->started_at ? $this->started_at->format('M d, Y') : ($this->created_at ? $this->created_at->format('M d, Y') : null);
     }
 
     /**
@@ -61,6 +104,18 @@ class CallLog extends Model
         }
 
         return $query->where('user_id', $userId);
+    }
+
+    /**
+     * Scope query to filter call logs by staff.
+     */
+    public function scopeByStaff($query, $staffId)
+    {
+        if (empty($staffId)) {
+            return $query;
+        }
+
+        return $query->where('staff_id', $staffId);
     }
 
     /**
@@ -100,6 +155,49 @@ class CallLog extends Model
     }
 
     /**
+     * Scope query for converted calls.
+     */
+    public function scopeConverted($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('call_outcome', 'converted')
+              ->orWhereNotNull('order_id');
+        });
+    }
+
+    /**
+     * Scope query for missed calls.
+     */
+    public function scopeMissed($query)
+    {
+        return $query->where('call_status', 'missed');
+    }
+
+    /**
+     * Scope query for answered calls.
+     */
+    public function scopeAnswered($query)
+    {
+        return $query->where('call_status', 'answered');
+    }
+
+    /**
+     * Scope query for date range.
+     */
+    public function scopeDateRange($query, $from, $to)
+    {
+        if (!empty($from) && !empty($to)) {
+            return $query->whereBetween('started_at', [$from, $to]);
+        } elseif (!empty($from)) {
+            return $query->where('started_at', '>=', $from);
+        } elseif (!empty($to)) {
+            return $query->where('started_at', '<=', $to);
+        }
+
+        return $query;
+    }
+
+    /**
      * Scope query to search call logs.
      */
     public function scopeSearch($query, $search)
@@ -113,7 +211,17 @@ class CallLog extends Model
                 ->orWhere('customer_name', 'like', "%{$search}%")
                 ->orWhere('call_sid', 'like', "%{$search}%")
                 ->orWhere('postcode', 'like', "%{$search}%")
-                ->orWhere('notes', 'like', "%{$search}%");
+                ->orWhere('notes', 'like', "%{$search}%")
+                ->orWhereHas('order', function ($oq) use ($search) {
+                    $oq->where('order_number', 'like', "%{$search}%")
+                      ->orWhere('customer_name', 'like', "%{$search}%")
+                      ->orWhere('customer_phone', 'like', "%{$search}%");
+                })
+                ->orWhereHas('user', function ($uq) use ($search) {
+                    $uq->where('name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
         });
     }
 }

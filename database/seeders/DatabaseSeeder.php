@@ -314,12 +314,14 @@ class DatabaseSeeder extends Seeder
                 'branch_id' => $branch1->id,
                 'name' => 'Delivery Driver (Alex)',
                 'vehicle_type' => 'Motorcycle',
-                'license_number' => 'DL-99887766',
-                'kyc_status' => 'approved',
-                'is_online' => true,
                 'status' => 'available',
             ]
         );
+
+        // 10. Seed Call Logs
+        $this->call([
+            CallLogSeeder::class,
+        ]);
     }
 }
 
