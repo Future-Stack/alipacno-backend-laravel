@@ -96,6 +96,11 @@ class Order extends Model
         return $this->hasMany(KitchenOrder::class);
     }
 
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class, 'order_id');
+    }
+
     /**
      * Calculate dynamic distance in KM between Branch and Delivery Address using Haversine formula.
      */
