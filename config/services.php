@@ -52,4 +52,12 @@ return [
         'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
     ],
 
+    'twilio' => [
+        'sid' => env('TWILIO_ACCOUNT_SID'),
+        'token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_PHONE_NUMBER'),
+        'forward_to' => env('TWILIO_FORWARD_TO_NUMBER'),
+        'record_calls' => env('TWILIO_RECORD_CALLS', true),
+    ],
+
 ];
