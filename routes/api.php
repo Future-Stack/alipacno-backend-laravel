@@ -53,6 +53,9 @@ use App\Http\Controllers\StockConversionController;
 
 use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\DeliveryFeeTierController;
+use App\Http\Controllers\DriverShiftController;
+use App\Http\Controllers\DriverPayoutController;
 
 use App\Http\Controllers\CallLogController;
 use App\Http\Controllers\TwilioWebhookController;
@@ -247,6 +250,8 @@ Route::prefix('v1')->group(function () {
     Route::post('coupons/apply', [CouponController::class, 'apply']);
     Route::post('delivery-areas/check', [DeliveryAreaController::class, 'checkPostcode']);
     Route::get('payment-gateways/active', [PaymentGatewayController::class, 'activeGateways']);
+    Route::match(['get', 'post'], 'delivery-fee-tiers/match', [DeliveryFeeTierController::class, 'matchDistance']);
+
 
     // Protected API Endpoints (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
@@ -301,10 +306,6 @@ Route::prefix('v1')->group(function () {
         Route::get('conversations/{conversation}', [ChatController::class, 'show']);
         Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
         Route::post('conversations/{conversation}/read', [ChatController::class, 'markAsRead']);
-
-
-
-
 
         // Role & Permission Protected Operations
         Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff,driver')->group(function () {
@@ -406,6 +407,22 @@ Route::prefix('v1')->group(function () {
 
         // Delivery & Driver Fleet
         Route::middleware('role:super_admin,hq_admin,branch_admin,driver,admin,staff')->group(function () {
+            // Delivery Fee Tiers (Admin Dashboard - Distance-based rates)
+            Route::apiResource('delivery-fee-tiers', DeliveryFeeTierController::class);
+
+            // Driver Shifts (Clock in / Clock out)
+            Route::post('drivers/clock-in', [DriverShiftController::class, 'clockIn']);
+            Route::post('drivers/clock-out', [DriverShiftController::class, 'clockOut']);
+            Route::get('drivers/current-shift', [DriverShiftController::class, 'currentShift']);
+            Route::get('driver-shifts', [DriverShiftController::class, 'index']);
+
+            // Driver Payouts & Earnings
+            Route::get('driver-payouts', [DriverPayoutController::class, 'index']);
+            Route::post('driver-payouts/calculate', [DriverPayoutController::class, 'calculate']);
+            Route::post('driver-payouts/{driver_payout}/process', [DriverPayoutController::class, 'process']);
+            Route::get('drivers/earnings', [DriverPayoutController::class, 'driverEarnings']);
+            Route::post('drivers/stripe-onboard', [DriverPayoutController::class, 'stripeOnboard']);
+
             Route::get('drivers/upcoming-requests', [DriverController::class, 'upcomingRequests']);
             Route::get('drivers/my-deliveries', [DriverController::class, 'myDeliveries']);
             Route::post('drivers/orders/{order}/accept', [DriverController::class, 'acceptOrder']);
@@ -501,4 +518,3 @@ Route::prefix('v1')->group(function () {
     });
 
 });
-
