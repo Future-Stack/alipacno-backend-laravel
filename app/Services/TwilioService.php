@@ -118,4 +118,57 @@ class TwilioService
             ];
         }
     }
+
+    /**
+     * Send SMS Message via Twilio REST API.
+     */
+    public function sendSms(string $toNumber, string $message, ?string $fromNumber = null): array
+    {
+        if (!$this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Twilio is not configured. Please add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in your .env file.',
+            ];
+        }
+
+        $from = $fromNumber ?: $this->fromNumber;
+        $url = "https://api.twilio.com/2010-04-01/Accounts/{$this->accountSid}/Messages.json";
+
+        try {
+            $response = Http::withBasicAuth($this->accountSid, $this->authToken)
+                ->asForm()
+                ->post($url, [
+                    'To' => $toNumber,
+                    'From' => $from,
+                    'Body' => $message,
+                ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return [
+                    'success' => true,
+                    'message_sid' => $data['sid'] ?? null,
+                    'status' => $data['status'] ?? 'queued',
+                    'data' => $data,
+                ];
+            }
+
+            Log::error('Twilio Send SMS Error', [
+                'status' => $response->status(),
+                'response' => $response->body(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $response->json('message') ?? 'Failed to send SMS via Twilio.',
+                'error' => $response->json(),
+            ];
+        } catch (\Exception $e) {
+            Log::error('Twilio Send SMS Exception: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
 }
