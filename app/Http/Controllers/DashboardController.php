@@ -772,8 +772,9 @@ class DashboardController extends Controller
      */
     public function orderManagement(Request $request)
     {
-        $period = $request->input('period', 'weekly'); // today, weekly, monthly, custom
+        $period = $request->input('period', 'weekly'); // today, yesterday, weekly, wtd, monthly, mtd, yearly, ytd, history, all, custom
         $now = Carbon::now();
+        $isAllHistory = in_array(strtolower($period), ['all', 'history', 'all_history']) || $request->boolean('all_history') || $request->boolean('history_mode');
 
         // 1. Resolve Date Range
         switch (strtolower($period)) {
@@ -783,11 +784,52 @@ class DashboardController extends Controller
                 $prevStartDate = (clone $startDate)->subDay();
                 $prevEndDate = (clone $endDate)->subDay();
                 break;
+            case 'yesterday':
+                $startDate = (clone $now)->subDay()->startOfDay();
+                $endDate = (clone $now)->subDay()->endOfDay();
+                $prevStartDate = (clone $startDate)->subDay()->startOfDay();
+                $prevEndDate = (clone $startDate)->subDay()->endOfDay();
+                break;
+            case 'wtd':
+            case 'week_to_date':
+                $startDate = (clone $now)->startOfWeek();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
+            case 'mtd':
+            case 'month_to_date':
+                $startDate = (clone $now)->startOfMonth();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subMonth();
+                $prevEndDate = (clone $endDate)->subMonth();
+                break;
             case 'monthly':
                 $startDate = (clone $now)->startOfMonth();
                 $endDate = (clone $now)->endOfMonth();
                 $prevStartDate = (clone $startDate)->subMonth()->startOfMonth();
                 $prevEndDate = (clone $startDate)->subMonth()->endOfMonth();
+                break;
+            case 'ytd':
+            case 'year_to_date':
+                $startDate = (clone $now)->startOfYear();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subYear();
+                $prevEndDate = (clone $endDate)->subYear();
+                break;
+            case 'yearly':
+                $startDate = (clone $now)->startOfYear();
+                $endDate = (clone $now)->endOfYear();
+                $prevStartDate = (clone $startDate)->subYear()->startOfYear();
+                $prevEndDate = (clone $startDate)->subYear()->endOfYear();
+                break;
+            case 'all':
+            case 'history':
+            case 'all_history':
+                $startDate = Carbon::createFromTimestamp(0);
+                $endDate = (clone $now)->endOfDay();
+                $prevStartDate = Carbon::createFromTimestamp(0);
+                $prevEndDate = (clone $now)->endOfDay();
                 break;
             case 'custom':
                 $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date'))->startOfDay() : (clone $now)->subDays(7)->startOfDay();
@@ -834,9 +876,17 @@ class DashboardController extends Controller
         $prevRevenue = (float) (clone $baseQuery)->whereBetween('created_at', [$prevStartDate, $prevEndDate])->whereIn('payment_status', ['paid', 'completed'])->sum('total');
         $revenueChangePct = $this->calculatePercentageChange($totalRevenue, $prevRevenue);
 
-        // 3. Paginated Orders Table with dynamic filters
-        $tableQuery = (clone $baseQuery)->with(['user', 'branch', 'assignedDriver.user', 'payment'])
-            ->whereBetween('created_at', [$startDate, $endDate]);
+        // 3. Paginated Orders Table with dynamic filters (including Order History)
+        $tableQuery = (clone $baseQuery)->with(['user', 'branch', 'assignedDriver.user', 'payment']);
+
+        if (!$isAllHistory) {
+            $tableQuery->whereBetween('created_at', [$startDate, $endDate]);
+        }
+
+        // Support filtering specifically for completed/past order history
+        if ($request->boolean('history_only') || $request->input('filter') === 'history') {
+            $tableQuery->whereIn('order_status', ['completed', 'delivered', 'cancelled', 'rejected']);
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -1475,6 +1525,13 @@ class DashboardController extends Controller
                 $prevStartDate = (clone $startDate)->subWeek();
                 $prevEndDate = (clone $endDate)->subWeek();
                 break;
+            case 'wtd':
+            case 'week_to_date':
+                $startDate = (clone $now)->startOfWeek();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
             case 'week':
             case 'weekly':
             case 'this_week':
@@ -1483,12 +1540,26 @@ class DashboardController extends Controller
                 $prevStartDate = (clone $startDate)->subWeek();
                 $prevEndDate = (clone $endDate)->subWeek();
                 break;
+            case 'mtd':
+            case 'month_to_date':
+                $startDate = (clone $now)->startOfMonth();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subMonth();
+                $prevEndDate = (clone $endDate)->subMonth();
+                break;
             case 'month':
             case 'monthly':
                 $startDate = (clone $now)->startOfMonth();
                 $endDate = (clone $now)->endOfMonth();
                 $prevStartDate = (clone $startDate)->subMonth()->startOfMonth();
                 $prevEndDate = (clone $startDate)->subMonth()->endOfMonth();
+                break;
+            case 'ytd':
+            case 'year_to_date':
+                $startDate = (clone $now)->startOfYear();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subYear();
+                $prevEndDate = (clone $endDate)->subYear();
                 break;
             case 'year':
             case 'yearly':
@@ -2399,7 +2470,7 @@ class DashboardController extends Controller
      */
     public function earningsAnalytics(Request $request)
     {
-        $period = $request->input('period', 'today'); // today, yesterday, weekly, monthly, yearly, custom
+        $period = $request->input('period', 'today'); // today, yesterday, weekly, wtd, monthly, mtd, yearly, ytd, custom
         $now = Carbon::now();
 
         // 1. Determine Date Range based on Period Filter
@@ -2410,17 +2481,38 @@ class DashboardController extends Controller
                 $prevStartDate = (clone $startDate)->subDay()->startOfDay();
                 $prevEndDate = (clone $startDate)->subDay()->endOfDay();
                 break;
+            case 'wtd':
+            case 'week_to_date':
+                $startDate = (clone $now)->startOfWeek();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subWeek();
+                $prevEndDate = (clone $endDate)->subWeek();
+                break;
             case 'weekly':
                 $startDate = (clone $now)->startOfWeek();
                 $endDate = (clone $now)->endOfWeek();
                 $prevStartDate = (clone $startDate)->subWeek();
                 $prevEndDate = (clone $endDate)->subWeek();
                 break;
+            case 'mtd':
+            case 'month_to_date':
+                $startDate = (clone $now)->startOfMonth();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subMonth();
+                $prevEndDate = (clone $endDate)->subMonth();
+                break;
             case 'monthly':
                 $startDate = (clone $now)->startOfMonth();
                 $endDate = (clone $now)->endOfMonth();
                 $prevStartDate = (clone $startDate)->subMonth()->startOfMonth();
                 $prevEndDate = (clone $startDate)->subMonth()->endOfMonth();
+                break;
+            case 'ytd':
+            case 'year_to_date':
+                $startDate = (clone $now)->startOfYear();
+                $endDate = (clone $now);
+                $prevStartDate = (clone $startDate)->subYear();
+                $prevEndDate = (clone $endDate)->subYear();
                 break;
             case 'yearly':
                 $startDate = (clone $now)->startOfYear();
