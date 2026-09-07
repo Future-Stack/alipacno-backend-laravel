@@ -505,6 +505,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/order/cancel', [StripeController::class, 'OrderCancel']);
     Route::post('/order/webhook-handle', [StripeController::class, 'handleWebhook']);
 
+    //Onboarding Webhook
+    Route::post('/onboarding/webhook', [DriverPayoutController::class, 'handleWebhook']);
+
     // Twilio Public Voice & Callback Webhooks
     Route::prefix('twilio')->group(function () {
         Route::post('voice', [TwilioWebhookController::class, 'voice']);

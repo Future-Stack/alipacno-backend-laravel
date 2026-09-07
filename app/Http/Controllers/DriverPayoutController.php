@@ -21,6 +21,41 @@ class DriverPayoutController extends Controller
     }
 
     /**
+     * Helper to verify and sync Stripe Connect Express onboarding status directly from Stripe API.
+     */
+    protected function syncStripeStatus(Driver $driver): bool
+    {
+        if (!$driver->stripe_account_id) {
+            return false;
+        }
+
+        if ($driver->stripe_onboarding_completed) {
+            return true;
+        }
+
+        $stripeSecret = config('services.stripe.secret') ?? env('STRIPE_SECRET');
+        if (!$stripeSecret) {
+            return false;
+        }
+
+        try {
+            $stripe = new StripeClient($stripeSecret);
+            $account = $stripe->accounts->retrieve($driver->stripe_account_id);
+
+            if (!empty($account->details_submitted) || !empty($account->payouts_enabled)) {
+                $driver->update([
+                    'stripe_onboarding_completed' => true,
+                ]);
+                return true;
+            }
+        } catch (\Exception $e) {
+            // Ignore API exceptions if account lookup fails
+        }
+
+        return (bool) $driver->stripe_onboarding_completed;
+    }
+
+    /**
      * Admin Dashboard: List weekly payouts across drivers.
      */
     public function index(Request $request)
@@ -149,6 +184,9 @@ class DriverPayoutController extends Controller
             return response()->json(['status' => 404, 'message' => 'Driver profile not found.'], 404);
         }
 
+        // Auto-sync Stripe onboarding status
+        $this->syncStripeStatus($driver);
+
         // Current week calculation
         $currentWeekStart = Carbon::now()->startOfWeek();
         $currentWeekEnd = Carbon::now()->endOfWeek();
@@ -169,10 +207,43 @@ class DriverPayoutController extends Controller
         return response()->json([
             'status' => 200,
             'data' => [
+                'stripe_onboarding_completed' => (bool) $driver->fresh()->stripe_onboarding_completed,
                 'current_week' => $currentEarnings,
                 'previous_week_lagged' => $previousEarnings,
                 'payout_history' => $payoutHistory,
             ],
+        ]);
+    }
+
+    /**
+     * Check & sync Stripe Connect onboarding completion status for driver.
+     */
+    public function stripeStatus(Request $request)
+    {
+        $user = Auth::user();
+        $driver = Driver::where('user_id', $user?->id)->first();
+
+        if (!$driver) {
+            $driver = Driver::where('id', $request->input('driver_id'))->first();
+        }
+
+        if (!$driver) {
+            return response()->json(['status' => 404, 'message' => 'Driver profile not found.'], 404);
+        }
+
+        $isCompleted = $this->syncStripeStatus($driver);
+        $freshDriver = $driver->fresh();
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'driver_id' => $freshDriver->id,
+                'stripe_account_id' => $freshDriver->stripe_account_id,
+                'stripe_onboarding_completed' => (bool) $freshDriver->stripe_onboarding_completed,
+            ],
+            'message' => $isCompleted
+                ? 'Stripe onboarding completed successfully.'
+                : 'Stripe onboarding is pending or incomplete.',
         ]);
     }
 
@@ -192,6 +263,12 @@ class DriverPayoutController extends Controller
             return response()->json(['status' => 404, 'message' => 'Driver profile not found.'], 404);
         }
 
+        // Auto sync first if driver completed it previously
+        if ($driver->stripe_account_id && !$driver->stripe_onboarding_completed) {
+            $this->syncStripeStatus($driver);
+            $driver->refresh();
+        }
+
         $stripeSecret = config('services.stripe.secret') ?? env('STRIPE_SECRET');
         if (!$stripeSecret) {
             return response()->json(['status' => 500, 'message' => 'Stripe secret key not configured.'], 500);
@@ -199,8 +276,8 @@ class DriverPayoutController extends Controller
 
         try {
             $stripe = new StripeClient($stripeSecret);
-            $refreshUrl = $request->input('refresh_url', url('/v1/drivers/stripe-onboard'));
-            $returnUrl = $request->input('return_url', url('/v1/drivers/earnings'));
+            $refreshUrl = $request->input('refresh_url', url('/api/v1/drivers/stripe-onboard'));
+            $returnUrl = $request->input('return_url', url('/api/v1/drivers/earnings'));
 
             // 1. If driver already has a Stripe account ID, try generating onboarding link
             if ($driver->stripe_account_id) {
@@ -217,11 +294,12 @@ class DriverPayoutController extends Controller
                         'data' => [
                             'onboarding_url' => $accountLink->url,
                             'stripe_account_id' => $driver->stripe_account_id,
+                            'stripe_onboarding_completed' => (bool) $driver->stripe_onboarding_completed,
                         ],
                     ]);
                 } catch (\Exception $e) {
                     // Reset invalid account ID to allow fresh creation below
-                    $driver->update(['stripe_account_id' => null]);
+                    $driver->update(['stripe_account_id' => null, 'stripe_onboarding_completed' => false]);
                 }
             }
 
@@ -277,7 +355,7 @@ class DriverPayoutController extends Controller
                 }
             }
 
-            $driver->update(['stripe_account_id' => $accountId]);
+            $driver->update(['stripe_account_id' => $accountId, 'stripe_onboarding_completed' => false]);
 
             $accountLink = $stripe->accountLinks->create([
                 'account' => $accountId,
@@ -291,6 +369,7 @@ class DriverPayoutController extends Controller
                 'data' => [
                     'onboarding_url' => $accountLink->url,
                     'stripe_account_id' => $accountId,
+                    'stripe_onboarding_completed' => false,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -299,5 +378,39 @@ class DriverPayoutController extends Controller
                 'message' => 'Stripe onboarding creation failed: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    //Onboarding Webhooks
+    public function handleWebhook(Request $request)
+    {
+        $payload = $request->getContent();
+        $sigHeader = $request->header('Stripe-Signature');
+        $endpointSecret = config('services.stripe.onboarding_webhook_secret') ?? env('ONBOARDING_WEBHOOK_SECRET');
+
+        try {
+            $event = \Stripe\Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
+        } catch (\UnexpectedValueException $e) {
+            return response()->json(['error' => 'Invalid payload'], 400);
+        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            return response()->json(['error' => 'Invalid signature'], 400);
+        }
+
+        // Listen for account updates
+        if ($event->type === 'account.updated') {
+            $account = $event->data->object; // Contains the Stripe Account object
+
+            $driver = Driver::where('stripe_account_id', $account->id)->first();
+
+            if ($driver) {
+                // Check if onboarding/payout requirements are fulfilled
+                if (!empty($account->details_submitted) || !empty($account->payouts_enabled)) {
+                    $driver->update([
+                        'stripe_onboarding_completed' => true,
+                    ]);
+                }
+            }
+        }
+
+        return response()->json(['status' => 'success']);
     }
 }

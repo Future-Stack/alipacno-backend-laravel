@@ -39,6 +39,7 @@ return [
         'secret' => env('STRIPE_SECRET'),
         'public' => env('STRIPE_PUBLIC'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'onboarding_webhook_secret' => env('ONBOARDING_WEBHOOK_SECRET'),
     ],
 
     'firebase' => [
