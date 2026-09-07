@@ -86,7 +86,7 @@ class OrderController extends Controller
             $query->where('assigned_driver_id', $request->assigned_driver_id);
         }
 
-        // Date & Period Filter (Today, Yesterday, Weekly, Monthly, Custom)
+        // Date & Period Filter (Today, Yesterday, Weekly, WTD, Monthly, MTD, Yearly, YTD, History, Custom)
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $startDate = \Carbon\Carbon::parse($request->start_date)->startOfDay();
             $endDate = \Carbon\Carbon::parse($request->end_date)->endOfDay();
@@ -100,11 +100,26 @@ class OrderController extends Controller
                 $query->whereDate('created_at', \Carbon\Carbon::today());
             } elseif ($period === 'yesterday') {
                 $query->whereDate('created_at', \Carbon\Carbon::yesterday());
+            } elseif ($period === 'wtd' || $period === 'week_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfWeek(), $now]);
             } elseif ($period === 'weekly') {
                 $query->whereBetween('created_at', [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()]);
+            } elseif ($period === 'mtd' || $period === 'month_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfMonth(), $now]);
             } elseif ($period === 'monthly') {
                 $query->whereBetween('created_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()]);
+            } elseif ($period === 'ytd' || $period === 'year_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfYear(), $now]);
+            } elseif ($period === 'yearly') {
+                $query->whereBetween('created_at', [$now->copy()->startOfYear(), $now->copy()->endOfYear()]);
+            } elseif (in_array($period, ['history', 'all', 'all_history'])) {
+                // Return all orders history without date restriction
             }
+        }
+
+        // Support filtering specifically for completed/past order history
+        if ($request->boolean('history_only') || $request->input('type') === 'history' || $request->input('view') === 'history') {
+            $query->whereIn('order_status', ['completed', 'delivered', 'cancelled', 'rejected']);
         }
 
         if ($request->filled('search')) {
