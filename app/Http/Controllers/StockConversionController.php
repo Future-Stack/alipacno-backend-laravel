@@ -134,7 +134,10 @@ class StockConversionController extends Controller
             $stockConversion->delete();
         });
 
-        return response()->json(null, 204);
+        return response()->json([
+            'status' => true,
+            'message' => 'Stock conversion deleted successfully.'
+        ], 200);
     }
 
     /**

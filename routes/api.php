@@ -397,6 +397,7 @@ Route::prefix('v1')->group(function () {
             Route::get('inventory-items/analytics', [InventoryItemController::class, 'analytics']);
             Route::get('inventory-items/export', [InventoryItemController::class, 'export']);
             Route::post('inventory-items/{inventoryItem}/distribute', [InventoryItemController::class, 'distribute']);
+            Route::post('inventory-items/{inventoryItem}', [InventoryItemController::class, 'update']);
             Route::apiResource('inventory-items', InventoryItemController::class);
             Route::apiResource('inventory-transactions', InventoryTransactionController::class);
             Route::apiResource('suppliers', SupplierController::class);
