@@ -91,6 +91,9 @@ class InventoryCategoryController extends Controller
 
         $inventoryCategory->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'status' => true,
+            'message' => 'Inventory category deleted successfully.'
+        ], 200);
     }
 }

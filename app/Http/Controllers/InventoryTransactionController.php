@@ -110,6 +110,9 @@ class InventoryTransactionController extends Controller
     {
         $inventoryTransaction->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'status' => true,
+            'message' => 'Inventory transaction deleted successfully.'
+        ], 200);
     }
 }
