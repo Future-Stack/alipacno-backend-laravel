@@ -163,6 +163,7 @@ class OrderController extends Controller
             'items.*.cooking_preference_id' => 'nullable|exists:cooking_preferences,id',
             'items.*.spice_level_id' => 'nullable|exists:spice_levels,id',
             'items.*.unit_price' => 'nullable|numeric',
+            'delivery_fee' => 'numeric:min:0',
         ]);
 
         return DB::transaction(function () use ($request, $validated) {
@@ -246,7 +247,8 @@ class OrderController extends Controller
             }
 
             $vat = $subtotal > 0 ? 2.00 : 0.00;
-            $deliveryFee = ($validated['order_type'] === 'delivery' && $subtotal > 0) ? 0.00 : 0.00;
+//            $deliveryFee = ($validated['order_type'] === 'delivery' && $subtotal > 0) ? 0.00 : 0.00;
+            $deliveryFee = $request->delivery_fee;
             $tip = $validated['tip'] ?? 0;
             $riderTip = $validated['rider_tip'] ?? 0;
 
