@@ -67,4 +67,22 @@ class InventoryCategoryTest extends TestCase
             'items_count' => 1,
         ]);
     }
+
+    public function test_can_delete_inventory_category(): void
+    {
+        $category = InventoryCategory::create([
+            'branch_id' => $this->branch->id,
+            'name' => 'Raw Meat',
+        ]);
+
+        $response = $this->actingAs($this->adminUser)->deleteJson("/api/v1/inventory-categories/{$category->id}");
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'status' => true,
+            'message' => 'Inventory category deleted successfully.',
+        ]);
+
+        $this->assertDatabaseMissing('inventory_categories', ['id' => $category->id]);
+    }
 }
