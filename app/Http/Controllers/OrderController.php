@@ -367,6 +367,11 @@ class OrderController extends Controller
 //                    'cancel_url' => url('/api/v1/order/cancel'),
 //                ]);
 
+                $origin = $request->header('origin') 
+                    ?? $request->input('origin') 
+                    ?? env('FRONTEND_URL', 'https://pacinos.uk');
+                $origin = rtrim($origin, '/');
+
                 $session = $stripe->checkout->sessions->create([
                     'payment_method_types' => ['card'],
                     'line_items' => [[
@@ -386,8 +391,8 @@ class OrderController extends Controller
                         'order_id'   => (string) $order->id,
                     ],
                     // Frontend redirect routes (Customer browser flow)
-                    'success_url' => url('/api/v1/order/success') .'?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url'  => url('/api/v1/order/cancel'),
+                    'success_url' => "{$origin}/order/success?session_id={CHECKOUT_SESSION_ID}",
+                    'cancel_url'  => "{$origin}/menu",
                 ]);
             }
 
