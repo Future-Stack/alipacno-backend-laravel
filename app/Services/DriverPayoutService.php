@@ -154,6 +154,11 @@ class DriverPayoutService
             return false;
         }
 
+        if ($payout->stripe_transfer_id || $payout->status === 'paid') {
+            Log::info("Driver payout {$payout->id} already paid; skipping Stripe transfer to avoid duplicate payment.");
+            return true;
+        }
+
         $stripeSecret = config('services.stripe.secret') ?? env('STRIPE_SECRET');
         if (!$stripeSecret) {
             Log::warning("Stripe secret key not configured for payout {$payout->id}.");

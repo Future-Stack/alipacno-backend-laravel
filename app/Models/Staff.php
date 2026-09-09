@@ -28,6 +28,8 @@ class Staff extends Model
         'commission',
         'hire_date',
         'status',
+        'stripe_account_id',
+        'stripe_onboarding_completed',
     ];
 
     protected $appends = [

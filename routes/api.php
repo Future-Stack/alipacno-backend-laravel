@@ -56,6 +56,7 @@ use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\DeliveryFeeTierController;
 use App\Http\Controllers\DriverShiftController;
 use App\Http\Controllers\DriverPayoutController;
+use App\Http\Controllers\StaffPayoutController;
 
 use App\Http\Controllers\CallLogController;
 use App\Http\Controllers\TwilioWebhookController;
@@ -424,6 +425,14 @@ Route::prefix('v1')->group(function () {
             Route::get('drivers/earnings', [DriverPayoutController::class, 'driverEarnings']);
             Route::post('drivers/stripe-onboard', [DriverPayoutController::class, 'stripeOnboard']);
 
+            // Staff Payouts & Salary (Weekly, Stripe Connect)
+            Route::get('staff-payouts', [StaffPayoutController::class, 'index']);
+            Route::post('staff-payouts/calculate', [StaffPayoutController::class, 'calculate']);
+            Route::post('staff-payouts/process-weekly', [StaffPayoutController::class, 'processWeekly']);
+            Route::post('staff-payouts/{staff_payout}/process', [StaffPayoutController::class, 'process']);
+            Route::post('staff-payouts/stripe-onboard', [StaffPayoutController::class, 'stripeOnboard']);
+            Route::post('staff-payouts/stripe-status', [StaffPayoutController::class, 'stripeStatus']);
+
             Route::get('drivers/upcoming-requests', [DriverController::class, 'upcomingRequests']);
             Route::get('drivers/my-deliveries', [DriverController::class, 'myDeliveries']);
             Route::post('drivers/orders/{order}/accept', [DriverController::class, 'acceptOrder']);
@@ -508,6 +517,7 @@ Route::prefix('v1')->group(function () {
 
     //Onboarding Webhook
     Route::post('/onboarding/webhook', [DriverPayoutController::class, 'handleWebhook']);
+    Route::post('/staff-onboarding/webhook', [StaffPayoutController::class, 'handleWebhook']);
 
     // Twilio Public Voice & Callback Webhooks
     Route::prefix('twilio')->group(function () {
