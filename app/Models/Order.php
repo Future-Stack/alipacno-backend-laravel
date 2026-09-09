@@ -43,6 +43,7 @@ class Order extends Model
         'customer_phone',
         'delivery_address',
         'notes',
+        'rejection_reason',
     ];
 
     public function user()
@@ -93,6 +94,11 @@ class Order extends Model
     public function kitchenOrders()
     {
         return $this->hasMany(KitchenOrder::class);
+    }
+
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class, 'order_id');
     }
 
     /**

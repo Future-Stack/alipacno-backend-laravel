@@ -97,6 +97,7 @@ class DriverController extends Controller
             'phone' => 'nullable|string|max:50',
             'vehicle_type' => 'nullable|string|max:100',
             'license_number' => 'required|string|max:100',
+            'hourly_rate' => 'nullable|numeric|min:0',
             'license_image' => 'nullable',
             'kyc_status' => 'nullable|in:pending,submitted,approved,rejected',
             'reject_reason' => 'nullable|string|max:1000',
@@ -200,6 +201,7 @@ class DriverController extends Controller
             'phone' => 'sometimes|string|max:50',
             'vehicle_type' => 'sometimes|string|max:100',
             'license_number' => 'sometimes|string|max:100',
+            'hourly_rate' => 'nullable|numeric|min:0',
             'license_image' => 'nullable',
             'kyc_status' => 'sometimes|in:pending,submitted,approved,rejected',
             'reject_reason' => 'nullable|string|max:1000',
@@ -495,16 +497,34 @@ class DriverController extends Controller
             return response()->json(['message' => 'Driver profile not found.'], 404);
         }
 
+        // Check if driver is online
+        if (!$driver->is_online) {
+            return response()->json([
+                'upcoming_count' => 0,
+                'is_online' => false,
+                'message' => 'Driver is currently offline. Please turn online status ON to view and receive upcoming delivery requests.',
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => (int) $request->input('per_page', 15),
+                'total' => 0,
+                'data' => [],
+            ]);
+        }
+
         // Get IDs of orders declined by this driver
         $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
 
         $query = Order::with(['items.menuItem', 'branch', 'address'])
-            ->where('branch_id', $driver->branch_id)
             ->where('order_type', 'delivery')
             ->whereNull('assigned_driver_id')
-            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
-            ->whereNotIn('id', $declinedOrderIds)
-            ->latest();
+            ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
+            ->whereNotIn('id', $declinedOrderIds);
+
+        if ($driver->branch_id) {
+            $query->where('branch_id', $driver->branch_id);
+        }
+
+        $query->latest();
 
         $orders = $query->paginate($request->input('per_page', 15));
 
@@ -596,6 +616,30 @@ class DriverController extends Controller
             ], 403);
         }
 
+        if (!$driver->is_online) {
+            return response()->json([
+                'success' => false,
+                'is_online' => false,
+                'message' => 'You are currently offline. Please turn online status ON first to accept delivery tasks.'
+            ], 400);
+        }
+
+        $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+            ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+            ->exists();
+
+        if ($hasActiveDelivery || $driver->status === 'on_delivery') {
+            if (!$hasActiveDelivery) {
+                // Auto sync if status was stuck
+                $driver->update(['status' => 'available']);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are currently on an active delivery task. Please complete your ongoing delivery first.'
+                ], 422);
+            }
+        }
+
         // Concurrency-safe execution with pessimistic locking
         return DB::transaction(function () use ($order, $driver) {
             $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
@@ -605,6 +649,21 @@ class DriverController extends Controller
                     'success' => false,
                     'message' => 'Order not found.'
                 ], 404);
+            }
+
+            // Check if order is already completed/delivered or cancelled
+            if (in_array($lockedOrder->order_status, ['delivered', 'completed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Order #{$lockedOrder->order_number} has already been completed/delivered."
+                ], 422);
+            }
+
+            if ($lockedOrder->order_status === 'cancelled') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Order #{$lockedOrder->order_number} has been cancelled and cannot be accepted."
+                ], 422);
             }
 
             // Check if order is already assigned
@@ -761,27 +820,15 @@ class DriverController extends Controller
             return response()->json(['message' => 'Driver profile not found.'], 404);
         }
 
-        $tab = $request->input('tab', 'ongoing'); // 'all', 'ongoing', 'completed'
-
-        $query = Delivery::with(['order.items.menuItem', 'order.branch', 'order.address'])
-            ->where('driver_id', $driver->id)
-            ->latest();
-
-        if ($tab === 'ongoing') {
-            $query->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way']);
-        } elseif ($tab === 'completed') {
-            $query->where('delivery_status', 'delivered');
-        }
-
-        $deliveries = $query->paginate($request->input('per_page', 15));
+        $tab = $request->input('tab', 'all'); // 'all', 'upcoming', 'ongoing', 'completed'
 
         // Counts for tab badges
         $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
-        $upcomingCount = Order::where('branch_id', $driver->branch_id)
-            ->where('order_type', 'delivery')
+        $upcomingCount = Order::where('order_type', 'delivery')
             ->whereNull('assigned_driver_id')
-            ->whereIn('order_status', ['pending', 'accepted', 'preparing', 'ready'])
+            ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
             ->whereNotIn('id', $declinedOrderIds)
+            ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
             ->count();
 
         $ongoingCount = Delivery::where('driver_id', $driver->id)
@@ -794,14 +841,129 @@ class DriverController extends Controller
 
         $allCount = Delivery::where('driver_id', $driver->id)->count();
 
+        $tabCounts = [
+            'all' => $allCount,
+            'upcoming' => $upcomingCount,
+            'ongoing' => $ongoingCount,
+            'completed' => $completedCount,
+        ];
+
+        // If tab is upcoming, return formatted unassigned orders
+        if ($tab === 'upcoming') {
+            if (!$driver->is_online) {
+                return response()->json([
+                    'tab_counts' => $tabCounts,
+                    'current_tab' => $tab,
+                    'is_online' => false,
+                    'message' => 'Driver is currently offline. Please turn online status ON to view upcoming delivery requests.',
+                    'deliveries' => [
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'per_page' => (int) $request->input('per_page', 15),
+                        'total' => 0,
+                        'data' => [],
+                    ],
+                ]);
+            }
+
+            $upcomingQuery = Order::with(['items.menuItem', 'branch', 'address'])
+                ->where('order_type', 'delivery')
+                ->whereNull('assigned_driver_id')
+                ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
+                ->whereNotIn('id', $declinedOrderIds)
+                ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
+                ->latest();
+
+            $upcomingOrders = $upcomingQuery->paginate($request->input('per_page', 15));
+
+            $formattedUpcoming = $upcomingOrders->getCollection()->map(function ($order) {
+                $firstItem = $order->items->first();
+                $menuItem = $firstItem?->menuItem;
+                $itemsCount = $order->items->count();
+                $earnings = (float) $order->delivery_fee;
+
+                return [
+                    'id' => null,
+                    'order_id' => $order->id,
+                    'driver_id' => null,
+                    'delivery_status' => 'pending',
+                    'order_number' => $order->order_number,
+                    'order_status' => $order->order_status,
+                    'payment_status' => $order->payment_status,
+                    'payment_method' => $order->payment_method,
+                    'category_tag' => $menuItem?->category?->name ?? 'Special',
+                    'title' => $menuItem ? $menuItem->name . ($itemsCount > 1 ? " + " . ($itemsCount - 1) . " more" : "") : 'Delivery Package',
+                    'image_url' => $menuItem?->image_url ?? null,
+                    'earnings' => $earnings,
+                    'formatted_earnings' => '£' . number_format($earnings, 2),
+                    'delivery_fee' => (float) $order->delivery_fee,
+                    'formatted_delivery_fee' => $order->delivery_fee > 0 ? '£' . number_format((float) $order->delivery_fee, 2) : 'Free',
+                    'rider_tip' => (float) $order->rider_tip,
+                    'formatted_rider_tip' => '£' . number_format((float) $order->rider_tip, 2),
+                    'total_order_amount' => (float) $order->total,
+                    'formatted_total_amount' => '£' . number_format((float) $order->total, 2),
+                    'pickup_location' => $order->branch ? ($order->branch->address ?? $order->branch->name) : 'Pacinos Branch',
+                    'delivery_location' => $order->delivery_address ?? ($order->address ? $order->address->address_line_1 . ', ' . $order->address->postcode : 'Customer Location'),
+                    'customer_name' => $order->customer_name ?? $order->user?->name ?? 'Valued Customer',
+                    'customer_phone' => $order->customer_phone ?? $order->user?->phone ?? 'N/A',
+                    'distance_km' => $order->calculateDistanceKm(),
+                    'distance_remaining' => $order->calculateDistanceKm() . ' km Remaining',
+                    'time_remaining_minutes' => $order->calculateRemainingMinutes(),
+                    'time_remaining' => $order->calculateRemainingMinutes() . ' mins Remaining',
+                    'delivery_time_formatted' => $order->estimated_delivery_time ? Carbon::parse($order->estimated_delivery_time)->format('l, M d, h:i A') : $order->created_at->format('l, M d, h:i A'),
+                    'created_at' => $order->created_at->toIso8601String(),
+                    'items' => $order->items->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'name' => $item->menuItem?->name ?? 'Menu Item',
+                            'quantity' => $item->quantity,
+                            'price' => (float) $item->unit_price,
+                            'image_url' => $item->menuItem?->image_url,
+                        ];
+                    }),
+                    'order' => $order,
+                ];
+            });
+
+            return response()->json([
+                'tab_counts' => $tabCounts,
+                'current_tab' => $tab,
+                'is_online' => (bool) $driver->is_online,
+                'deliveries' => [
+                    'current_page' => $upcomingOrders->currentPage(),
+                    'last_page' => $upcomingOrders->lastPage(),
+                    'per_page' => $upcomingOrders->perPage(),
+                    'total' => $upcomingOrders->total(),
+                    'data' => $formattedUpcoming,
+                ],
+            ]);
+        }
+
+        $query = Delivery::with([
+            'order.items.menuItem',
+            'order.branch',
+            'order.user.defaultAddress',
+            'order.user.address',
+            'order.address',
+            'driver.user',
+            'user.defaultAddress',
+            'user.address',
+        ])
+            ->where('driver_id', $driver->id)
+            ->latest();
+
+        if ($tab === 'ongoing') {
+            $query->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way']);
+        } elseif ($tab === 'completed') {
+            $query->where('delivery_status', 'delivered');
+        }
+
+        $deliveries = $query->paginate($request->input('per_page', 15));
+
         return response()->json([
-            'tab_counts' => [
-                'all' => $allCount,
-                'upcoming' => $upcomingCount,
-                'ongoing' => $ongoingCount,
-                'completed' => $completedCount,
-            ],
+            'tab_counts' => $tabCounts,
             'current_tab' => $tab,
+            'is_online' => (bool) $driver->is_online,
             'deliveries' => $deliveries,
         ]);
     }

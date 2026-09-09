@@ -46,27 +46,23 @@ class OrderController extends Controller
         ]);
 
         $authUser = $request->user() ?? auth('sanctum')->user();
+        $isSuperAdmin = $authUser && ($authUser->isSuperAdmin() || $authUser->user_type === 'super_admin' || $authUser->user_type === 'admin' || $authUser->hasRole(['super_admin', 'Super Admin', 'admin']));
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
-        } elseif ($authUser && in_array($authUser->user_type, ['branch_admin', 'staff', 'driver'])) {
-            // Automatically detect branch for branch-scoped staff and managers
-            $userBranchId = $authUser->branch_id 
-                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
-                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
-                ?? $authUser->driver?->branch_id;
+        } elseif (!$isSuperAdmin && $authUser) {
+            if ($authUser->isCustomer() || $authUser->user_type === 'customer' || $authUser->hasRole('Customer')) {
+                $query->where('user_id', $authUser->id);
+            } elseif ($authUser->isBranchAdmin() || in_array($authUser->user_type, ['branch_admin', 'staff', 'driver']) || (method_exists($authUser, 'hasRole') && $authUser->hasRole(['Branch Manager', 'branch_admin', 'Cashier', 'cashier', 'Chef', 'chef', 'Waiter', 'waiter', 'Delivery Driver', 'driver']))) {
+                // Automatically detect branch for branch-scoped staff and managers
+                $userBranchId = $authUser->branch_id
+                    ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
+                    ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
+                    ?? $authUser->driver?->branch_id;
 
-            if ($userBranchId) {
-                $query->where('branch_id', $userBranchId);
-            }
-        } elseif ($authUser && method_exists($authUser, 'hasRole') && $authUser->hasRole(['Branch Manager', 'branch_admin', 'Cashier', 'cashier', 'Chef', 'chef', 'Waiter', 'waiter', 'Delivery Driver', 'driver'])) {
-            $userBranchId = $authUser->branch_id 
-                ?? \App\Models\BranchAdmin::where('email', $authUser->email)->value('branch_id')
-                ?? \App\Models\Staff::where('email', $authUser->email)->value('branch_id')
-                ?? $authUser->driver?->branch_id;
-
-            if ($userBranchId) {
-                $query->where('branch_id', $userBranchId);
+                if ($userBranchId) {
+                    $query->where('branch_id', $userBranchId);
+                }
             }
         }
 
@@ -84,15 +80,13 @@ class OrderController extends Controller
 
         if ($request->boolean('unassigned') || $request->boolean('unassigned_only')) {
             $query->whereNull('assigned_driver_id');
+        } elseif ($request->boolean('assigned') || $request->boolean('assigned_only')) {
+            $query->whereNotNull('assigned_driver_id');
         } elseif ($request->filled('assigned_driver_id')) {
             $query->where('assigned_driver_id', $request->assigned_driver_id);
         }
 
-        if ($authUser && $authUser->hasRole('Customer')) {
-            $query->where('user_id', $authUser->id);
-        }
-
-        // Date & Period Filter (Today, Yesterday, Weekly, Monthly, Custom)
+        // Date & Period Filter (Today, Yesterday, Weekly, WTD, Monthly, MTD, Yearly, YTD, History, Custom)
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $startDate = \Carbon\Carbon::parse($request->start_date)->startOfDay();
             $endDate = \Carbon\Carbon::parse($request->end_date)->endOfDay();
@@ -106,11 +100,26 @@ class OrderController extends Controller
                 $query->whereDate('created_at', \Carbon\Carbon::today());
             } elseif ($period === 'yesterday') {
                 $query->whereDate('created_at', \Carbon\Carbon::yesterday());
+            } elseif ($period === 'wtd' || $period === 'week_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfWeek(), $now]);
             } elseif ($period === 'weekly') {
                 $query->whereBetween('created_at', [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()]);
+            } elseif ($period === 'mtd' || $period === 'month_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfMonth(), $now]);
             } elseif ($period === 'monthly') {
                 $query->whereBetween('created_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()]);
+            } elseif ($period === 'ytd' || $period === 'year_to_date') {
+                $query->whereBetween('created_at', [$now->copy()->startOfYear(), $now]);
+            } elseif ($period === 'yearly') {
+                $query->whereBetween('created_at', [$now->copy()->startOfYear(), $now->copy()->endOfYear()]);
+            } elseif (in_array($period, ['history', 'all', 'all_history'])) {
+                // Return all orders history without date restriction
             }
+        }
+
+        // Support filtering specifically for completed/past order history
+        if ($request->boolean('history_only') || $request->input('type') === 'history' || $request->input('view') === 'history') {
+            $query->whereIn('order_status', ['completed', 'delivered', 'cancelled', 'rejected']);
         }
 
         if ($request->filled('search')) {
@@ -154,6 +163,7 @@ class OrderController extends Controller
             'items.*.cooking_preference_id' => 'nullable|exists:cooking_preferences,id',
             'items.*.spice_level_id' => 'nullable|exists:spice_levels,id',
             'items.*.unit_price' => 'nullable|numeric',
+            'delivery_fee' => 'numeric:min:0',
         ]);
 
         return DB::transaction(function () use ($request, $validated) {
@@ -237,7 +247,8 @@ class OrderController extends Controller
             }
 
             $vat = $subtotal > 0 ? 2.00 : 0.00;
-            $deliveryFee = ($validated['order_type'] === 'delivery' && $subtotal > 0) ? 0.00 : 0.00;
+//            $deliveryFee = ($validated['order_type'] === 'delivery' && $subtotal > 0) ? 0.00 : 0.00;
+            $deliveryFee = $request->delivery_fee;
             $tip = $validated['tip'] ?? 0;
             $riderTip = $validated['rider_tip'] ?? 0;
 
@@ -334,73 +345,80 @@ class OrderController extends Controller
                 //Payment Gateway Starts
                 $stripe = new StripeClient(config('services.stripe.secret'));
 
+//                $session = $stripe->checkout->sessions->create([
+//                    'line_items' => [[
+//                        'price_data' => [
+//                            'currency' => 'usd',
+//                            'product_data' => [
+//                                'name' => 'Restaurant Menuitem Order',
+//                            ],
+//                            'unit_amount' => (int)($order->total * 100),
+//                        ],
+//                        'quantity' => 1,
+//                    ]],
+//                    'mode' => 'payment',
+//
+//                    'metadata' => [
+//                        'payment_id' => $payment->id,
+//                    ],
+//
+//
+//
+//                    // ✅ IMPORTANT: api + v1 prefix
+//                    'success_url' => url('/api/v1/order/success') . '?session_id={CHECKOUT_SESSION_ID}',
+//                    'cancel_url' => url('/api/v1/order/cancel'),
+//                ]);
+
                 $session = $stripe->checkout->sessions->create([
+                    'payment_method_types' => ['card'],
                     'line_items' => [[
                         'price_data' => [
                             'currency' => 'usd',
                             'product_data' => [
                                 'name' => 'Restaurant Menuitem Order',
                             ],
-                            'unit_amount' => (int)($order->total * 100),
+                            // Ensure integer cents casting safely
+                            'unit_amount' => (int) round($order->total * 100),
                         ],
                         'quantity' => 1,
                     ]],
                     'mode' => 'payment',
-
                     'metadata' => [
-                        'payment_id' => $payment->id,
+                        'payment_id' => (string) $payment->id,
+                        'order_id'   => (string) $order->id,
                     ],
-
-
-
-                    // ✅ IMPORTANT: api + v1 prefix
-                    'success_url' => url('/api/v1/order/success') . '?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url' => url('/api/v1/order/cancel'),
+                    // Frontend redirect routes (Customer browser flow)
+                    'success_url' => url('/api/v1/order/success') .'?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url'  => url('/api/v1/order/cancel'),
                 ]);
-
-
             }
 
-            // Broadcast to Reverb WebSocket & Send FCM Push for Delivery orders
-            if ($order->order_type === 'delivery' && $order->branch_id) {
-                try {
-                    // 1. Reverb WebSocket Broadcast to driver channel
-                    broadcast(new NewDeliveryBroadcastEvent($order));
-
-                    // 2. FCM Push Notification to Online Drivers of this Branch (from users.fcm_token)
-                    $onlineDriverTokens = User::whereHas('driver', function ($q) use ($order) {
-                        $q->where('branch_id', $order->branch_id)
-                          ->where('kyc_status', 'approved')
-                          ->where('is_online', true)
-                          ->where('status', 'available');
-                    })
-                    ->whereNotNull('fcm_token')
-                    ->pluck('fcm_token')
-                    ->toArray();
-
-                    if (!empty($onlineDriverTokens)) {
-                        FirebaseNotificationService::sendPushNotification(
-                            $onlineDriverTokens,
-                            "New Delivery Task Available!",
-                            "Order #{$order->order_number} is available for delivery (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
-                            [
-                                'type' => 'new_delivery',
-                                'order_id' => (string) $order->id,
-                                'order_number' => $order->order_number,
-                            ]
-                        );
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Delivery Dispatch Broadcast/FCM Error: ' . $e->getMessage());
-                }
-            }
-
-            // 3. Broadcast real-time order creation to Branch Admin / Next.js Kanban Board (all order types)
+            // 1. Broadcast real-time order creation to Branch Admin & Kitchen (Kanban / POS)
             if ($order->branch_id) {
                 try {
                     broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'created'));
                 } catch (\Exception $e) {
                     Log::error('Order Created Broadcast Error: ' . $e->getMessage());
+                }
+
+                // 2. In-app Notification to Branch Admin about pending order requiring approval
+                try {
+                    $branchAdminUsers = User::where('branch_id', $order->branch_id)
+                        ->whereIn('user_type', ['branch_admin', 'staff'])
+                        ->pluck('id');
+
+                    foreach ($branchAdminUsers as $adminUserId) {
+                        Notification::create([
+                            'user_id' => $adminUserId,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'New Pending Order #' . $order->order_number,
+                            'message' => "A new {$order->order_type} order #{$order->order_number} has been placed. Please review and approve/prepare.",
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Branch Admin Order Notification Error: ' . $e->getMessage());
                 }
             }
 
@@ -454,6 +472,14 @@ class OrderController extends Controller
      */
     public function update(Request $request, Order $order)
     {
+        // Disallow updating or reactivating an already cancelled/rejected order
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} has already been cancelled/rejected and cannot be updated or reactivated.",
+            ], 422);
+        }
+
         $validated = $request->validate([
             'order_status' => 'sometimes|in:pending,accepted,preparing,ready,out_for_delivery,completed,cancelled,refunded',
             'payment_status' => 'sometimes|in:pending,paid,failed,refunded',
@@ -463,9 +489,28 @@ class OrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Handle Manual Driver Assignment by Admin
+        if (!empty($validated['assigned_driver_id'])) {
+            $driverId = $validated['assigned_driver_id'];
+            $driver = Driver::with('user')->find($driverId);
+
+            if ($driver) {
+                $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+                    ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                    ->where('order_id', '!=', $order->id)
+                    ->exists();
+
+                if ($hasActiveDelivery) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Driver '{$driver->name}' is currently on an active delivery task and cannot be assigned.",
+                    ], 422);
+                }
+            }
+        }
+
         $order->update($validated);
 
-        // Handle Manual Driver Assignment by Admin
         if (!empty($validated['assigned_driver_id'])) {
             $driverId = $validated['assigned_driver_id'];
             $driver = Driver::with('user')->find($driverId);
@@ -536,14 +581,88 @@ class OrderController extends Controller
             }
         }
 
-        // Update linked KitchenOrder status if order status changed
+        // Update linked KitchenOrder status and dispatch notifications on status change
         if (isset($validated['order_status'])) {
-            if ($validated['order_status'] === 'preparing') {
+            $newStatus = $validated['order_status'];
+
+            if ($newStatus === 'preparing') {
                 $order->kitchenOrders()->update(['status' => 'preparing', 'started_at' => now()]);
-            } elseif ($validated['order_status'] === 'ready') {
+            } elseif ($newStatus === 'ready') {
                 $order->kitchenOrders()->update(['status' => 'ready', 'completed_at' => now()]);
-            } elseif (in_array($validated['order_status'], ['completed', 'cancelled'])) {
+            } elseif (in_array($newStatus, ['completed', 'cancelled'])) {
                 $order->kitchenOrders()->update(['status' => 'served']);
+            }
+
+            // Dispatch to Drivers ONLY when Branch approves and status becomes 'preparing' or 'ready'
+            if (in_array($newStatus, ['preparing', 'ready', 'accepted']) && $order->order_type === 'delivery' && empty($order->assigned_driver_id) && $order->branch_id) {
+                try {
+                    // 1. Reverb WebSocket Broadcast to Driver Channel (Upcoming Request popup)
+                    broadcast(new NewDeliveryBroadcastEvent($order));
+
+                    // 2. FCM Push Notification to Online & Available Drivers of this Branch
+                    $onlineDrivers = User::whereHas('driver', function ($q) use ($order) {
+                        $q->where('branch_id', $order->branch_id)
+                          ->where('kyc_status', 'approved')
+                          ->where('is_online', true)
+                          ->where('status', 'available');
+                    })->get();
+
+                    $onlineDriverTokens = $onlineDrivers->whereNotNull('fcm_token')->pluck('fcm_token')->toArray();
+
+                    if (!empty($onlineDriverTokens)) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $onlineDriverTokens,
+                            "New Delivery Task Available!",
+                            "Order #{$order->order_number} is {$newStatus} and available for delivery (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
+                            [
+                                'type' => 'new_delivery',
+                                'order_id' => (string) $order->id,
+                                'order_number' => $order->order_number,
+                            ]
+                        );
+                    }
+
+                    // 3. In-App Notification to Drivers
+                    foreach ($onlineDrivers as $driverUser) {
+                        Notification::create([
+                            'user_id' => $driverUser->id,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'New Delivery Request Available',
+                            'message' => "Order #{$order->order_number} is {$newStatus} and available for delivery.",
+                            'type' => 'delivery',
+                            'is_read' => false,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Driver Delivery Dispatch on Preparing/Ready Error: ' . $e->getMessage());
+                }
+            }
+
+            // Customer Notifications on Status Transitions
+            if ($order->user_id) {
+                try {
+                    if (in_array($newStatus, ['accepted', 'preparing'])) {
+                        Notification::create([
+                            'user_id' => $order->user_id,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'Order Approved & Preparing',
+                            'message' => "Your order #{$order->order_number} has been approved and is now being prepared in the kitchen.",
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
+                    } elseif ($newStatus === 'cancelled') {
+                        Notification::create([
+                            'user_id' => $order->user_id,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'Order Cancelled',
+                            'message' => "Your order #{$order->order_number} has been cancelled.",
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Customer Status Transition Notification Error: ' . $e->getMessage());
+                }
             }
         }
 
@@ -579,6 +698,20 @@ class OrderController extends Controller
             return response()->json(['message' => 'Unauthorized: Only admins can assign drivers.'], 403);
         }
 
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign driver: Order #{$order->order_number} is already cancelled.",
+            ], 422);
+        }
+
+        if (in_array($order->order_status, ['delivered', 'completed'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign driver: Order #{$order->order_number} has already been completed/delivered.",
+            ], 422);
+        }
+
         $validated = $request->validate([
             'driver_id' => 'required|exists:drivers,id',
             'order_status' => 'nullable|in:pending,accepted,preparing,ready,out_for_delivery,delivered,completed',
@@ -594,6 +727,18 @@ class OrderController extends Controller
 
         if ($driver->kyc_status !== 'approved') {
             return response()->json(['message' => 'Cannot assign: Driver KYC is not approved yet.'], 422);
+        }
+
+        $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+            ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+            ->where('order_id', '!=', $order->id)
+            ->exists();
+
+        if ($hasActiveDelivery) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot assign: Driver '{$driver->name}' is currently on an active delivery task."
+            ], 422);
         }
 
         return DB::transaction(function () use ($order, $driver, $validated) {
@@ -683,5 +828,249 @@ class OrderController extends Controller
                 'delivery' => $delivery->fresh(['driver']),
             ]);
         });
+    }
+
+    /**
+     * Dedicated Action: Branch Admin Approves/Accepts a Pending Order.
+     */
+    public function approve(Request $request, Order $order)
+    {
+        $authUser = $request->user();
+        $isAllowed = $authUser && (
+            $authUser->isSuperAdmin() ||
+            $authUser->user_type === 'super_admin' ||
+            $authUser->user_type === 'admin' ||
+            $authUser->isBranchAdmin() ||
+            $authUser->user_type === 'branch_admin' ||
+            $authUser->user_type === 'staff' ||
+            (method_exists($authUser, 'hasRole') && $authUser->hasRole(['super_admin', 'Super Admin', 'admin', 'branch_admin', 'Branch Manager', 'branch_manager', 'Cashier', 'cashier', 'Chef', 'chef']))
+        );
+
+        if (!$isAllowed) {
+            return response()->json(['message' => 'Unauthorized: Only Super Admins, Branch Admins, and authorized staff can approve orders.'], 403);
+        }
+
+        // Check if the order is already cancelled
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} is cancelled and cannot be approved.",
+            ], 422);
+        }
+
+        // Only pending orders can be approved
+        if ($order->order_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} cannot be approved because its current status is '{$order->order_status}'. Only pending orders can be approved.",
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'preparation_time' => 'nullable|integer|min:1|max:180', // in minutes
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $prepTime = $validated['preparation_time'] ?? 25;
+        $estimatedDeliveryTime = now()->addMinutes($prepTime + ($order->order_type === 'delivery' ? 20 : 0));
+
+        DB::transaction(function () use ($order, $prepTime, $estimatedDeliveryTime, $validated) {
+            // 1. Update Order Status to 'preparing'
+            $order->update([
+                'order_status' => 'preparing',
+                'estimated_delivery_time' => $estimatedDeliveryTime,
+                'notes' => !empty($validated['notes']) ? ($order->notes ? $order->notes . ' | ' . $validated['notes'] : $validated['notes']) : $order->notes,
+            ]);
+
+            // 2. Update Kitchen Station Orders to 'preparing'
+            $order->kitchenOrders()->update([
+                'status' => 'preparing',
+                'started_at' => now(),
+            ]);
+
+            // 3. If Order Type is Delivery & unassigned, Dispatch to Branch Online Drivers
+            if ($order->order_type === 'delivery' && empty($order->assigned_driver_id) && $order->branch_id) {
+                try {
+                    // Reverb WebSocket Broadcast
+                    broadcast(new NewDeliveryBroadcastEvent($order));
+
+                    // FCM Push Notification to Online & Approved Drivers
+                    $onlineDrivers = User::whereHas('driver', function ($q) use ($order) {
+                        $q->where('branch_id', $order->branch_id)
+                          ->where('kyc_status', 'approved')
+                          ->where('is_online', true)
+                          ->where('status', 'available');
+                    })->get();
+
+                    $onlineDriverTokens = $onlineDrivers->whereNotNull('fcm_token')->pluck('fcm_token')->toArray();
+
+                    if (!empty($onlineDriverTokens)) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $onlineDriverTokens,
+                            "New Delivery Task Available!",
+                            "Order #{$order->order_number} is approved & preparing (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
+                            [
+                                'type' => 'new_delivery',
+                                'order_id' => (string) $order->id,
+                                'order_number' => $order->order_number,
+                            ]
+                        );
+                    }
+
+                    // In-app notifications to drivers
+                    foreach ($onlineDrivers as $driverUser) {
+                        Notification::create([
+                            'user_id' => $driverUser->id,
+                            'branch_id' => $order->branch_id,
+                            'title' => 'New Delivery Request Available',
+                            'message' => "Order #{$order->order_number} has been approved and is available for delivery.",
+                            'type' => 'delivery',
+                            'is_read' => false,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Driver Delivery Dispatch on Order Approve Error: ' . $e->getMessage());
+                }
+            }
+
+            // 4. Notify Customer that Order has been Approved and is Preparing (In-App & FCM Push)
+            if ($order->user_id) {
+                try {
+                    Notification::create([
+                        'user_id' => $order->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => 'Order Approved & Preparing',
+                        'message' => "Great news! Your order #{$order->order_number} has been accepted by the restaurant and is now being prepared.",
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+
+                    $custToken = $order->user?->fcm_token;
+                    if ($custToken) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $custToken,
+                            "Order Approved & Preparing! 🍳",
+                            "Your order #{$order->order_number} has been accepted and is now being prepared.",
+                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'order_status' => 'preparing']
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Customer Notification Error on Order Approve: ' . $e->getMessage());
+                }
+            }
+
+            // 5. Broadcast status update to Kanban Board / Web Dashboard
+            if ($order->branch_id) {
+                try {
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'preparing'));
+                } catch (\Exception $e) {
+                    Log::error('Order Approved Broadcast Error: ' . $e->getMessage());
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => "Order #{$order->order_number} approved successfully and sent for preparation.",
+            'data' => $order->fresh(['items.menuItem', 'branch', 'user', 'kitchenOrders']),
+        ]);
+    }
+
+    /**
+     * Dedicated Action: Branch Admin Rejects/Cancels a Pending Order.
+     */
+    public function reject(Request $request, Order $order)
+    {
+        $authUser = $request->user();
+        $isAllowed = $authUser && (
+            $authUser->isSuperAdmin() ||
+            $authUser->user_type === 'super_admin' ||
+            $authUser->user_type === 'admin' ||
+            $authUser->isBranchAdmin() ||
+            $authUser->user_type === 'branch_admin' ||
+            $authUser->user_type === 'staff' ||
+            (method_exists($authUser, 'hasRole') && $authUser->hasRole(['super_admin', 'Super Admin', 'admin', 'branch_admin', 'Branch Manager', 'branch_manager', 'Cashier', 'cashier', 'Chef', 'chef']))
+        );
+
+        if (!$isAllowed) {
+            return response()->json(['message' => 'Unauthorized: Only Super Admins, Branch Admins, and authorized staff can reject orders.'], 403);
+        }
+
+        // Check if the order is already cancelled / rejected
+        if ($order->order_status === 'cancelled') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} is already cancelled and cannot be rejected again.",
+            ], 422);
+        }
+
+        // Only pending orders can be rejected
+        if ($order->order_status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => "Order #{$order->order_number} cannot be rejected because its current status is '{$order->order_status}'. Only pending orders can be rejected.",
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $reason = $validated['reason'] ?? 'Restaurant is unable to fulfill this order at the moment.';
+
+        DB::transaction(function () use ($order, $reason) {
+            // 1. Update Order Status to 'cancelled' and set rejection_reason directly on orders table
+            $order->update([
+                'order_status' => 'cancelled',
+                'rejection_reason' => $reason,
+                'notes' => $order->notes ? $order->notes . " | Rejection Reason: {$reason}" : "Rejection Reason: {$reason}",
+            ]);
+
+            // 2. Update Kitchen Station Orders to 'served' / cancelled
+            $order->kitchenOrders()->update([
+                'status' => 'served',
+            ]);
+
+            // 3. Notify Customer with Rejection Reason (In-App & FCM Push)
+            if ($order->user_id) {
+                try {
+                    Notification::create([
+                        'user_id' => $order->user_id,
+                        'branch_id' => $order->branch_id,
+                        'title' => 'Order Cancelled',
+                        'message' => "We are sorry, your order #{$order->order_number} could not be accepted. Reason: {$reason}",
+                        'type' => 'order',
+                        'is_read' => false,
+                    ]);
+
+                    $custToken = $order->user?->fcm_token;
+                    if ($custToken) {
+                        FirebaseNotificationService::sendPushNotification(
+                            $custToken,
+                            "Order Cancelled",
+                            "Your order #{$order->order_number} could not be accepted. Reason: {$reason}",
+                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'order_status' => 'cancelled']
+                        );
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Customer Notification Error on Order Reject: ' . $e->getMessage());
+                }
+            }
+
+            // 4. Broadcast status update to Kanban Board / Web Dashboard
+            if ($order->branch_id) {
+                try {
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'cancelled'));
+                } catch (\Exception $e) {
+                    Log::error('Order Rejected Broadcast Error: ' . $e->getMessage());
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => "Order #{$order->order_number} has been rejected.",
+            'data' => $order->fresh(['items.menuItem', 'branch', 'user']),
+        ]);
     }
 }

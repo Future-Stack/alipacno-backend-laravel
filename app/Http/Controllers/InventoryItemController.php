@@ -125,7 +125,10 @@ class InventoryItemController extends Controller
 
         $inventoryItem->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'status' => true,
+            'message' => 'Inventory item deleted successfully.'
+        ], 200);
     }
 
     /**

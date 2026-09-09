@@ -53,8 +53,12 @@ use App\Http\Controllers\StockConversionController;
 
 use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\DeliveryFeeTierController;
+use App\Http\Controllers\DriverShiftController;
+use App\Http\Controllers\DriverPayoutController;
 
 use App\Http\Controllers\CallLogController;
+use App\Http\Controllers\TwilioWebhookController;
 use App\Http\Controllers\CustomerTagController;
 use App\Http\Controllers\CustomerNoteController;
 use App\Http\Controllers\CustomerSegmentController;
@@ -82,6 +86,7 @@ use App\Http\Controllers\SavedReportController;
 use App\Http\Controllers\ScheduledReportController;
 use App\Http\Controllers\AiInsightController;
 use App\Http\Controllers\AiRecommendationController;
+use App\Http\Controllers\ChatController;
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Page\PageController;
@@ -127,6 +132,8 @@ Route::prefix('v1')->group(function () {
     Route::get('dashboard/order-management', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/order-report', [DashboardController::class, 'orderManagement']);
     Route::get('dashboard/orders-report', [DashboardController::class, 'orderManagement']);
+    Route::get('dashboard/ai-insights', [AiInsightController::class, 'dashboard']);
+    Route::get('dashboard/ai-insights/refresh', [AiInsightController::class, 'refresh']);
 
     // Super Admin / HQ Deliveries Management (Global across all branches)
     Route::get('dashboard/hq/deliveries', [DashboardController::class, 'hqDeliveries']);
@@ -243,6 +250,8 @@ Route::prefix('v1')->group(function () {
     Route::post('coupons/apply', [CouponController::class, 'apply']);
     Route::post('delivery-areas/check', [DeliveryAreaController::class, 'checkPostcode']);
     Route::get('payment-gateways/active', [PaymentGatewayController::class, 'activeGateways']);
+    Route::match(['get', 'post'], 'delivery-fee-tiers/match', [DeliveryFeeTierController::class, 'matchDistance']);
+
 
     // Protected API Endpoints (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
@@ -261,6 +270,8 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('carts', CartController::class)->except(['index', 'store','show']);
         Route::apiResource('cart-items', CartItemController::class)->except(['store', 'update', 'destroy']);
         Route::post('orders/{order}/assign-driver', [OrderController::class, 'assignDriver']);
+        Route::post('orders/{order}/approve', [OrderController::class, 'approve']);
+        Route::post('orders/{order}/reject', [OrderController::class, 'reject']);
         Route::apiResource('orders', OrderController::class)->except(['store']);
         Route::apiResource('order-items', OrderItemController::class);
         Route::post('payments/{payment}/refund', [PaymentController::class, 'processRefund']);
@@ -277,15 +288,27 @@ Route::prefix('v1')->group(function () {
         Route::delete('pages/{page_id}', [PageController::class, 'destroy']);
         Route::delete('account-delete', [DeleteUsersController::class, 'destroy']);
         Route::apiResource('faqs', FaqController::class);
-         Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
-        Route::post( '/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
+        Route::post('/change-password', [DeleteUsersController::class, 'changePassword']);
+        Route::post('/drivers/location', [DriverLocationController::class, 'update'])->name('drivers.location.update');
 
+        // Notification Center & Notification Settings
+        Route::get('notifications/summary', [NotificationController::class, 'summary']);
+        Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::post('notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
+        Route::patch('notifications/{notification}/toggle-read', [NotificationController::class, 'toggleRead']);
+        Route::apiResource('notifications', NotificationController::class);
+        Route::apiResource('notification-settings', NotificationSettingController::class);
 
-
-
+        // Real-time Chat & Messaging System
+        Route::get('chat/contacts', [ChatController::class, 'contacts']);
+        Route::get('conversations', [ChatController::class, 'index']);
+        Route::post('conversations', [ChatController::class, 'store']);
+        Route::get('conversations/{conversation}', [ChatController::class, 'show']);
+        Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/read', [ChatController::class, 'markAsRead']);
 
         // Role & Permission Protected Operations
-        Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff')->group(function () {
+        Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff,driver')->group(function () {
             Route::post('roles/{role}/sync-permissions', [RoleController::class, 'syncPermissions']);
             Route::post('roles/{role}/assign-permissions', [RoleController::class, 'assignPermissions']);
             Route::apiResource('roles', RoleController::class);
@@ -304,6 +327,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
+            Route::post('staff-attendance/clock-out', [StaffAttendanceController::class, 'clockOut']);
             Route::post('staff-attendance/{staff_attendance}/clock-out', [StaffAttendanceController::class, 'clockOut']);
             Route::apiResource('staff-attendance', StaffAttendanceController::class);
             Route::apiResource('restaurants', RestaurantController::class)->except(['index', 'show']);
@@ -352,6 +376,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('scheduled-reports/{scheduled_report}/toggle-status', [ScheduledReportController::class, 'toggleStatus']);
             Route::post('scheduled-reports/{scheduled_report}/run-now', [ScheduledReportController::class, 'runNow']);
             Route::apiResource('scheduled-reports', ScheduledReportController::class);
+            Route::get('ai-insights/dashboard', [AiInsightController::class, 'dashboard']);
+            Route::post('ai-insights/refresh', [AiInsightController::class, 'refresh']);
             Route::apiResource('ai-insights', AiInsightController::class);
             Route::apiResource('ai-recommendations', AiRecommendationController::class);
 
@@ -371,6 +397,7 @@ Route::prefix('v1')->group(function () {
             Route::get('inventory-items/analytics', [InventoryItemController::class, 'analytics']);
             Route::get('inventory-items/export', [InventoryItemController::class, 'export']);
             Route::post('inventory-items/{inventoryItem}/distribute', [InventoryItemController::class, 'distribute']);
+            Route::post('inventory-items/{inventoryItem}', [InventoryItemController::class, 'update']);
             Route::apiResource('inventory-items', InventoryItemController::class);
             Route::apiResource('inventory-transactions', InventoryTransactionController::class);
             Route::apiResource('suppliers', SupplierController::class);
@@ -381,6 +408,22 @@ Route::prefix('v1')->group(function () {
 
         // Delivery & Driver Fleet
         Route::middleware('role:super_admin,hq_admin,branch_admin,driver,admin,staff')->group(function () {
+            // Delivery Fee Tiers (Admin Dashboard - Distance-based rates)
+            Route::apiResource('delivery-fee-tiers', DeliveryFeeTierController::class);
+
+            // Driver Shifts (Clock in / Clock out)
+            Route::post('drivers/clock-in', [DriverShiftController::class, 'clockIn']);
+            Route::post('drivers/clock-out', [DriverShiftController::class, 'clockOut']);
+            Route::get('drivers/current-shift', [DriverShiftController::class, 'currentShift']);
+            Route::get('driver-shifts', [DriverShiftController::class, 'index']);
+
+            // Driver Payouts & Earnings
+            Route::get('driver-payouts', [DriverPayoutController::class, 'index']);
+            Route::post('driver-payouts/calculate', [DriverPayoutController::class, 'calculate']);
+            Route::post('driver-payouts/{driver_payout}/process', [DriverPayoutController::class, 'process']);
+            Route::get('drivers/earnings', [DriverPayoutController::class, 'driverEarnings']);
+            Route::post('drivers/stripe-onboard', [DriverPayoutController::class, 'stripeOnboard']);
+
             Route::get('drivers/upcoming-requests', [DriverController::class, 'upcomingRequests']);
             Route::get('drivers/my-deliveries', [DriverController::class, 'myDeliveries']);
             Route::post('drivers/orders/{order}/accept', [DriverController::class, 'acceptOrder']);
@@ -394,8 +437,13 @@ Route::prefix('v1')->group(function () {
         });
 
         // CRM & Marketing
-        Route::middleware('role:super_admin,hq_admin,branch_admin,marketing_manager')->group(function () {
+        Route::middleware('role:super_admin,admin,hq_admin,branch_admin,branch_manager,cashier,staff,marketing_manager')->group(function () {
+            Route::get('call-logs/overview', [CallLogController::class, 'overview']);
             Route::get('call-logs/stats', [CallLogController::class, 'stats']);
+            Route::get('call-logs/converted-orders', [CallLogController::class, 'convertedOrders']);
+            Route::get('call-logs/history', [CallLogController::class, 'history']);
+            Route::post('call-logs/{call_log}/convert-order', [CallLogController::class, 'convertOrder']);
+            Route::post('call-logs/{call_log}/callback', [CallLogController::class, 'logCallback']);
             Route::apiResource('call-logs', CallLogController::class);
             Route::post('customer-tags/bulk', [CustomerTagController::class, 'bulkStore']);
             Route::apiResource('customer-tags', CustomerTagController::class);
@@ -456,8 +504,21 @@ Route::prefix('v1')->group(function () {
     //Stripe
     Route::get('/order/success', [StripeController::class, 'OrderSuccess']);
     Route::get('/order/cancel', [StripeController::class, 'OrderCancel']);
-
     Route::post('/order/webhook-handle', [StripeController::class, 'handleWebhook']);
 
-});
+    //Onboarding Webhook
+    Route::post('/onboarding/webhook', [DriverPayoutController::class, 'handleWebhook']);
 
+    // Twilio Public Voice & Callback Webhooks
+    Route::prefix('twilio')->group(function () {
+        Route::post('voice', [TwilioWebhookController::class, 'voice']);
+        Route::match(['get', 'post'], 'status-callback', [TwilioWebhookController::class, 'statusCallback']);
+        Route::post('recording-callback', [TwilioWebhookController::class, 'recordingCallback']);
+    });
+
+    // Twilio Authenticated Click-to-Call
+    Route::middleware(['auth:sanctum'])->group(function () {
+        Route::post('twilio/make-call', [TwilioWebhookController::class, 'makeCall']);
+    });
+
+});

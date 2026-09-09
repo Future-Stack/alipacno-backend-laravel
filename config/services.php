@@ -38,11 +38,27 @@ return [
     'stripe' => [
         'secret' => env('STRIPE_SECRET'),
         'public' => env('STRIPE_PUBLIC'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'onboarding_webhook_secret' => env('ONBOARDING_WEBHOOK_SECRET'),
     ],
 
     'firebase' => [
         'server_key' => env('FIREBASE_SERVER_KEY'),
         'credentials' => env('FIREBASE_CREDENTIALS', storage_path('app/firebase/firebase_credentials.json')),
+    ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-1.5-flash'),
+        'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+    ],
+
+    'twilio' => [
+        'sid' => env('TWILIO_ACCOUNT_SID'),
+        'token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_PHONE_NUMBER'),
+        'forward_to' => env('TWILIO_FORWARD_TO_NUMBER'),
+        'record_calls' => env('TWILIO_RECORD_CALLS', true),
     ],
 
 ];

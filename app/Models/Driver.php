@@ -24,6 +24,9 @@ class Driver extends Model
         'reject_reason',
         'is_online',
         'status',
+        'hourly_rate',
+        'stripe_account_id',
+        'stripe_onboarding_completed',
     ];
 
     protected $appends = [
@@ -42,6 +45,8 @@ class Driver extends Model
 
     protected $casts = [
         'is_online' => 'boolean',
+        'hourly_rate' => 'float',
+        'stripe_onboarding_completed' => 'boolean',
     ];
 
     public function user()
@@ -65,7 +70,22 @@ class Driver extends Model
     }
 
     public function locations(): HasMany
-{
-    return $this->hasMany(DriverLocation::class);
-}
+    {
+        return $this->hasMany(DriverLocation::class);
+    }
+
+    public function shifts(): HasMany
+    {
+        return $this->hasMany(DriverShift::class);
+    }
+
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(DriverPayout::class);
+    }
+
+    public function activeShift()
+    {
+        return $this->hasOne(DriverShift::class)->where('status', 'active')->latestOfMany();
+    }
 }

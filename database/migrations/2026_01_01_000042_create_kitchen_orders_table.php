@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('kitchen_orders', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id');
-            $table->foreignId('kitchen_station_id');
+            $table->foreignId('kitchen_station_id')->nullable()->constrained();
             $table->foreignId('chef_id')->nullable();
             $table->enum('status', ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'])
                   ->default('pending');

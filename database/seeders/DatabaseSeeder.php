@@ -289,7 +289,23 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 8. Seed Delivery Drivers
+        // 8. Seed Branch Manager for Branch 1
+        $managerUser = \App\Models\User::where('email', 'manager@restaurant.com')->first();
+        if ($managerUser) {
+            \App\Models\BranchAdmin::firstOrCreate(
+                ['email' => $managerUser->email],
+                [
+                    'user_id' => $managerUser->id,
+                    'branch_id' => $branch1->id,
+                    'name' => $managerUser->name,
+                    'phone' => $managerUser->phone,
+                    'password' => $managerUser->password,
+                    'status' => 'active',
+                ]
+            );
+        }
+
+        // 9. Seed Delivery Drivers
         $driverUser = \App\Models\User::where('email', 'driver@restaurant.com')->first();
         \App\Models\Driver::firstOrCreate(
             ['phone' => '+447000000007'],
@@ -298,12 +314,14 @@ class DatabaseSeeder extends Seeder
                 'branch_id' => $branch1->id,
                 'name' => 'Delivery Driver (Alex)',
                 'vehicle_type' => 'Motorcycle',
-                'license_number' => 'DL-99887766',
-                'kyc_status' => 'approved',
-                'is_online' => true,
                 'status' => 'available',
             ]
         );
+
+        // 10. Seed Call Logs
+        $this->call([
+            CallLogSeeder::class,
+        ]);
     }
 }
 

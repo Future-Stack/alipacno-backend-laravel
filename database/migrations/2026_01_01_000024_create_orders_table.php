@@ -42,6 +42,7 @@ return new class extends Migration
             $table->string('customer_phone')->nullable();
             $table->text('delivery_address')->nullable();
             $table->text('notes')->nullable();
+            $table->text('rejection_reason')->nullable();
             $table->timestamps();
         });
     }
