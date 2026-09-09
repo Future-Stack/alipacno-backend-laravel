@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pacinos HQ - Inventory & Conversions Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-body: #0b0d11;
+            --bg-sidebar: #0f1218;
+            --bg-card: #151821;
+            --bg-card-hover: #1c212c;
+            --bg-input: #1b1f2b;
+            --border-color: #262c3b;
+            --border-focus: #f95700;
+            --primary: #f95700;
+            --primary-hover: #ff6b1a;
+            --primary-glow: rgba(249, 87, 0, 0.25);
+            --text-main: #f3f4f6;
+            --text-muted: #8e95a5;
+            --text-dim: #5a6275;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --font-family: 'Plus Jakarta Sans', sans-serif;
+            --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: var(--font-family);
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-body);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-dim);
+        }
+
+        /* Sidebar */
+        aside.sidebar {
+            width: 260px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .brand-logo {
+            padding: 24px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .brand-badge {
+            background: linear-gradient(135deg, #f95700, #ff8c42);
+            color: white;
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
+            font-weight: 800;
+            letter-spacing: 1px;
+            font-size: 14px;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .brand-name {
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-name span {
+            color: var(--primary);
+        }
+
+        .nav-menu {
+            padding: 16px 12px;
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            padding: 12px 12px 6px;
+            font-weight: 700;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: var(--radius-sm);
+            font-size: 13.5px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .nav-item:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: var(--primary);
+            font-weight: 600;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .nav-item.sub-item {
+            padding-left: 36px;
+            font-size: 13px;
+        }
+
+        .nav-item.sub-item.active {
+            background: rgba(249, 87, 0, 0.15);
+            color: var(--primary);
+            box-shadow: none;
+            border-left: 3px solid var(--primary);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .logout-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--danger);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: var(--transition);
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--danger);
+        }
+
+        /* Main Content Container */
+        main.content-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            background: var(--bg-body);
+        }
+
+        /* Top Header */
+        header.topbar {
+            height: 70px;
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(15, 18, 24, 0.8);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+
+        .breadcrumbs {
+            font-size: 13px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .breadcrumbs span.current {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .api-config-pill {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .api-config-pill:hover {
+            border-color: var(--primary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .profile-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: var(--radius-md);
+        }
+
+        .avatar-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #e63946);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .user-role {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        /* Page Body */
+        .page-container {
+            padding: 32px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .page-header {
+            margin-bottom: 28px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 6px;
+        }
+
+        .page-desc {
+            font-size: 13.5px;
+            color: var(--text-muted);
+        }
+
+        /* Card Component */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: var(--transition);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-subtitle {
+            font-size: 12.5px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        /* Forms & Inputs */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: capitalize;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        select,
+        textarea {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13.5px;
+            outline: none;
+            transition: var(--transition);
+            width: 100%;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 70px;
+        }
+
+        /* File Upload Box */
+        .file-upload-box {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: var(--bg-input);
+            border: 1px dashed var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .file-upload-box:hover {
+            border-color: var(--primary);
+            background: rgba(249, 87, 0, 0.03);
+        }
+
+        .file-upload-icon {
+            font-size: 24px;
+            color: var(--text-dim);
+        }
+
+        .file-upload-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-upload-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .file-upload-title span {
+            color: var(--primary);
+            text-decoration: underline;
+        }
+
+        .file-upload-hint {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .image-preview-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            position: relative;
+        }
+
+        .image-preview-chip img {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .image-preview-name {
+            font-size: 12px;
+            font-weight: 600;
+            max-width: 120px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .image-preview-remove {
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: var(--transition);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 14px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-outline:hover {
+            background: var(--bg-input);
+            border-color: var(--text-dim);
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 12px;
+        }
+
+        /* Table */
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        table.data-table th {
+            background: #11141c;
+            color: var(--text-dim);
+            font-weight: 700;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        table.data-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+
+        table.data-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .item-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .item-thumb {
+            width: 38px;
+            height: 38px;
+            border-radius: 6px;
+            object-fit: cover;
+            border: 1px solid var(--border-color);
+        }
+
+        .ratio-badge {
+            background: rgba(249, 87, 0, 0.1);
+            color: var(--primary);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .input-inline {
+            width: 70px !important;
+            padding: 6px 8px !important;
+            display: inline-block;
+            text-align: center;
+            font-size: 12.5px !important;
+        }
+
+        .select-inline {
+            width: 90px !important;
+            padding: 6px 8px !important;
+            display: inline-block;
+            font-size: 12px !important;
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 18px 20px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .kpi-title {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+
+        .kpi-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        /* View Tabs Switcher */
+        .view-section {
+            display: none;
+        }
+
+        .view-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--primary);
+            color: var(--text-main);
+            padding: 12px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease forwards;
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--danger); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 500px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+
+        .modal-title {
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="brand-logo">
+            <div class="brand-badge">PACINOS</div>
+            <div class="brand-name">Pacinos <span>HQ</span></div>
+        </div>
+
+        <nav class="nav-menu">
+            <div class="nav-label">Main Menu</div>
+            <a class="nav-item" onclick="switchView('kpi-view', this)">
+                <i class="fa-solid fa-chart-pie"></i> Dashboard
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-store"></i> Branches
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-layer-group"></i> Categories
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-coins"></i> Earnings
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-box-open"></i> Orders
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-phone"></i> Call Logs
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-users"></i> CRM
+            </a>
+            <a class="nav-item">
+                <i class="fa-solid fa-truck"></i> Deliveries
+            </a>
+
+            <div class="nav-label">Inventory Ops</div>
+            <a class="nav-item active" style="justify-content: space-between;">
+                <span><i class="fa-solid fa-warehouse"></i> Inventory</span>
+                <i class="fa-solid fa-chevron-down" style="font-size: 10px;"></i>
+            </a>
+            <a class="nav-item sub-item" onclick="switchView('overview-view', this)">
+                <i class="fa-solid fa-boxes-stacked"></i> Stock Overview
+            </a>
+            <a class="nav-item sub-item active" onclick="switchView('conversions-view', this)">
+                <i class="fa-solid fa-repeat"></i> Items & Conversions
+            </a>
+            <a class="nav-item sub-item" onclick="switchView('add-stock-view', this)">
+                <i class="fa-solid fa-plus-circle"></i> Add Stock / Convert
+            </a>
+            <a class="nav-item sub-item" onclick="openApiModal()">
+                <i class="fa-solid fa-plug"></i> API Connection
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button class="logout-btn" onclick="showToast('Logged out session', 'info')">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i> Log Out
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+        <!-- Header / Topbar -->
+        <header class="topbar">
+            <div class="breadcrumbs">
+                <span>Pacinos HQ</span>
+                <i class="fa-solid fa-chevron-right" style="font-size: 10px;"></i>
+                <span class="current" id="page-breadcrumb">Items-Conversions</span>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="api-config-pill" onclick="openApiModal()" title="Click to configure Laravel API URL & Bearer Token">
+                    <div class="status-dot" id="api-status-indicator"></div>
+                    <span id="api-status-text">API: Mock Mode (Click to connect)</span>
+                </div>
+
+                <div class="profile-chip">
+                    <div class="avatar-circle">SA</div>
+                    <div class="user-info">
+                        <span class="user-name">Super Administrator</span>
+                        <span class="user-role">Global Administrator</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Container Body -->
+        <div class="page-container">
+
+            <!-- ================= VIEW 1: ITEMS & CONVERSIONS (SCREENSHOT 1) ================= -->
+            <section id="conversions-view" class="view-section active">
+                <div class="page-header">
+                    <h1 class="page-title">Inventory Items and conversions</h1>
+                    <p class="page-desc">Nothing here is fixed — edit any ratio, or add a brand new raw material or prepared item.</p>
+                </div>
+
+                <!-- 1. Add New Raw Material Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-cube" style="color: var(--primary);"></i> Add new raw material</h2>
+                            <p class="card-subtitle">Calls <code>POST /api/v1/inventory-items</code> with type = raw_material</p>
+                        </div>
+                    </div>
+
+                    <form id="raw-material-form" onsubmit="handleCreateRawMaterial(event)">
+                        <!-- Upload Image -->
+                        <div class="form-group full-width" style="margin-bottom: 16px;">
+                            <label>Upload Image</label>
+                            <div class="file-upload-box" onclick="document.getElementById('raw-img-input').click()">
+                                <input type="file" id="raw-img-input" accept="image/*" style="display:none;" onchange="handleFileSelect(event, 'raw-img-preview')">
+                                <i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i>
+                                <div class="file-upload-info">
+                                    <span class="file-upload-title">Drag and drop or <span>Choose File</span></span>
+                                    <span class="file-upload-hint">JPEG, PNG, WEBP formats, up to 50MB</span>
+                                </div>
+                                <div id="raw-img-preview" style="margin-left: auto;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="raw-name" placeholder="e.g. Potato, Flour, Chicken Breast" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Unit *</label>
+                                <select id="raw-unit" required>
+                                    <option value="KG">KG</option>
+                                    <option value="GM">GM</option>
+                                    <option value="LTR">LTR</option>
+                                    <option value="PCS">PCS</option>
+                                    <option value="BOX">BOX</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Low stock threshold</label>
+                                <input type="number" id="raw-threshold" placeholder="e.g. 5" min="0" step="any">
+                            </div>
+                            <div class="form-group">
+                                <label>Initial Quantity</label>
+                                <input type="number" id="raw-qty" placeholder="e.g. 100" min="0" step="any" value="50">
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width" style="margin-bottom: 18px;">
+                            <label>Description</label>
+                            <textarea id="raw-desc" placeholder="Write item details, supplier notes..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-plus"></i> Add raw material
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 2. Add New Prepared Item Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-mortar-pestle" style="color: var(--primary);"></i> Add new prepared item (with its own conversion)</h2>
+                            <p class="card-subtitle">Calls <code>POST /api/v1/inventory-items</code> with type = prepared, linking raw material ratio</p>
+                        </div>
+                    </div>
+
+                    <form id="prepared-item-form" onsubmit="handleCreatePreparedItem(event)">
+                        <!-- Upload Image -->
+                        <div class="form-group full-width" style="margin-bottom: 16px;">
+                            <label>Upload Image</label>
+                            <div class="file-upload-box" onclick="document.getElementById('prep-img-input').click()">
+                                <input type="file" id="prep-img-input" accept="image/*" style="display:none;" onchange="handleFileSelect(event, 'prep-img-preview')">
+                                <i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i>
+                                <div class="file-upload-info">
+                                    <span class="file-upload-title">Drag and drop or <span>Choose File</span></span>
+                                    <span class="file-upload-hint">JPEG, PNG, WEBP formats, up to 50MB</span>
+                                </div>
+                                <div id="prep-img-preview" style="margin-left: auto;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="prep-name" placeholder="e.g. Mozzarella Stick, Beef Patty" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Made from (Raw Material) *</label>
+                                <select id="prep-made-from" required>
+                                    <!-- Populated dynamically via GET /api/v1/inventory-items?type=raw_material -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Unit *</label>
+                                <select id="prep-unit" required>
+                                    <option value="PCS">PCS</option>
+                                    <option value="PORTION">PORTION</option>
+                                    <option value="KG">KG</option>
+                                    <option value="BOX">BOX</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Pack size used (Raw quantity) *</label>
+                                <input type="number" id="prep-pack-size" placeholder="e.g. 7" min="0.01" step="any" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Yields qty (Produced pieces) *</label>
+                                <input type="number" id="prep-yield-qty" placeholder="e.g. 100" min="0.01" step="any" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Low stock threshold</label>
+                                <input type="number" id="prep-threshold" placeholder="e.g. 20" min="0" step="any">
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width" style="margin-bottom: 18px;">
+                            <label>Description</label>
+                            <textarea id="prep-desc" placeholder="Write prep recipe instructions, notes..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-plus"></i> Add prepared item
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 3. Conversions Table Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-table-list" style="color: var(--primary);"></i> Active Conversion Ratios</h2>
+                            <p class="card-subtitle">Edit inline and click "Save" to execute <code>PUT /api/v1/inventory-items/{id}</code></p>
+                        </div>
+                        <button class="btn btn-outline btn-sm" onclick="loadInventoryData()">
+                            <i class="fa-solid fa-rotate"></i> Refresh Table
+                        </button>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Image</th>
+                                    <th>Item Name</th>
+                                    <th>Made from</th>
+                                    <th>Pack size used</th>
+                                    <th>Yields qty</th>
+                                    <th>Ratio</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="conversions-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================= VIEW 2: ADD STOCK / CONVERT / DISTRIBUTE (SCREENSHOT 2) ================= -->
+            <section id="add-stock-view" class="view-section">
+                <div class="page-header">
+                    <h1 class="page-title">Add stock</h1>
+                    <p class="page-desc">Log a new raw material purchase, convert it into prepared items, then distribute to branches.</p>
+                </div>
+
+                <!-- Section 1: Stock Raw Material -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-cart-shopping" style="color: var(--primary);"></i> Stock raw material</h2>
+                            <p class="card-subtitle">Calls <code>POST /api/v1/inventory-transactions</code> with transaction_type: 'purchase'</p>
+                        </div>
+                    </div>
+
+                    <form id="stock-purchase-form" onsubmit="handleStockPurchase(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Raw material *</label>
+                                <select id="stock-raw-select" required>
+                                    <!-- Options populated dynamically -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Qty purchased *</label>
+                                <input type="number" id="stock-qty-purchased" placeholder="e.g. 7" min="0.01" step="any" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Cost (£)</label>
+                                <input type="number" id="stock-cost" placeholder="0.00" min="0" step="0.01">
+                            </div>
+                            <div class="form-group" style="justify-content: flex-end;">
+                                <button type="submit" class="btn btn-primary" style="height: 42px;">
+                                    <i class="fa-solid fa-plus"></i> Add stock
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Section 2: Convert to Prepared Item -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-arrows-rotate" style="color: var(--primary);"></i> Convert to prepared item</h2>
+                            <p class="card-subtitle">Ratios come from the "Items and conversions" page — calls <code>POST /api/v1/stock-conversions/convert</code></p>
+                        </div>
+                    </div>
+
+                    <form id="stock-convert-form" onsubmit="handleStockConvert(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Prepared Item *</label>
+                                <select id="convert-prepared-select" onchange="updateYieldPreview()" required>
+                                    <!-- Options populated dynamically -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Packs to convert *</label>
+                                <input type="number" id="convert-packs" placeholder="1" min="1" step="any" value="1" oninput="updateYieldPreview()" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Yield preview</label>
+                                <input type="text" id="convert-yield-preview" readonly style="background: rgba(249,87,0,0.08); color: var(--primary); font-weight: 700;" value="Select item...">
+                            </div>
+                            <div class="form-group" style="justify-content: flex-end;">
+                                <button type="submit" class="btn btn-primary" style="height: 42px;">
+                                    <i class="fa-solid fa-bolt"></i> Convert now
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Section 3: Distribute to Branch -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-share-nodes" style="color: var(--primary);"></i> Distribute to branch</h2>
+                            <p class="card-subtitle">Calls <code>POST /api/v1/inventory-items/{id}/distribute</code> to sync branch inventory levels</p>
+                        </div>
+                    </div>
+
+                    <form id="stock-distribute-form" onsubmit="handleStockDistribute(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Item *</label>
+                                <select id="distribute-item-select" required>
+                                    <!-- All items -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Target Branch *</label>
+                                <select id="distribute-branch-select" required>
+                                    <option value="2">Eltham Branch</option>
+                                    <option value="3">Bexley Branch</option>
+                                    <option value="4">Greenwich Branch</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Qty to send *</label>
+                                <input type="number" id="distribute-qty" placeholder="e.g. 10" min="0.01" step="any" required>
+                            </div>
+                            <div class="form-group" style="justify-content: flex-end;">
+                                <button type="submit" class="btn btn-primary" style="height: 42px;">
+                                    <i class="fa-solid fa-paper-plane"></i> Distribute
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ================= VIEW 3: INVENTORY OVERVIEW & KPIS ================= -->
+            <section id="overview-view" class="view-section">
+                <div class="page-header">
+                    <h1 class="page-title">Real-Time Stock Overview</h1>
+                    <p class="page-desc">Aggregated metrics from <code>GET /api/v1/inventory-items/summary</code></p>
+                </div>
+
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div>
+                            <div class="kpi-title">Total Items</div>
+                            <div class="kpi-value" id="kpi-total-items">14</div>
+                        </div>
+                        <div class="kpi-icon" style="background: rgba(249, 87, 0, 0.15); color: var(--primary);">
+                            <i class="fa-solid fa-boxes-stacked"></i>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div>
+                            <div class="kpi-title">Low Stock Alert</div>
+                            <div class="kpi-value" id="kpi-low-stock" style="color: var(--warning);">2</div>
+                        </div>
+                        <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div>
+                            <div class="kpi-title">Out of Stock</div>
+                            <div class="kpi-value" id="kpi-out-stock" style="color: var(--danger);">0</div>
+                        </div>
+                        <div class="kpi-icon" style="background: rgba(239, 68, 68, 0.15); color: var(--danger);">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div>
+                            <div class="kpi-title">Total Stock Value</div>
+                            <div class="kpi-value" id="kpi-stock-val" style="color: var(--success);">£3,420.50</div>
+                        </div>
+                        <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--success);">
+                            <i class="fa-solid fa-sterling-sign"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title"><i class="fa-solid fa-list-check"></i> Master Inventory Items</h2>
+                        <input type="text" id="inventory-search" placeholder="Search item or SKU..." style="max-width: 250px;" oninput="filterMasterInventory()">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Quantity</th>
+                                    <th>Min Stock</th>
+                                    <th>Status</th>
+                                    <th>Unit Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="master-inventory-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- API Config Modal -->
+    <div class="modal-overlay" id="api-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fa-solid fa-server" style="color: var(--primary);"></i> Laravel API Settings</h3>
+                <button class="modal-close" onclick="closeApiModal()">&times;</button>
+            </div>
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label>Backend API Base URL</label>
+                <input type="text" id="api-base-url" value="http://127.0.0.1:8000/api/v1">
+                <small style="color: var(--text-dim); font-size: 11px;">Default: http://127.0.0.1:8000/api/v1</small>
+            </div>
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label>Sanctum Bearer Token (Optional)</label>
+                <input type="password" id="api-bearer-token" placeholder="Paste your Sanctum token here">
+                <small style="color: var(--text-dim); font-size: 11px;">Leave blank to operate in Interactive Mock Mode</small>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="btn btn-outline" onclick="closeApiModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveApiSettings()">Save & Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container"></div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // State Management
+        let appState = {
+            apiBaseUrl: localStorage.getItem('inventory_api_base') || 'http://127.0.0.1:8000/api/v1',
+            bearerToken: localStorage.getItem('inventory_bearer_token') || '',
+            isLiveApi: false,
+            rawMaterials: [
+                { id: 1, name: "Potato", unit: "KG", quantity: 80, minimum_stock: 15, purchase_price: 1.2, image: "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=100&auto=format&fit=crop&q=60", type: "raw_material" },
+                { id: 2, name: "Flour", unit: "KG", quantity: 120, minimum_stock: 20, purchase_price: 0.9, image: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=100&auto=format&fit=crop&q=60", type: "raw_material" },
+                { id: 3, name: "Chicken Breast", unit: "KG", quantity: 65, minimum_stock: 10, purchase_price: 4.5, image: "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=100&auto=format&fit=crop&q=60", type: "raw_material" },
+                { id: 4, name: "Minced Beef", unit: "KG", quantity: 50, minimum_stock: 12, purchase_price: 5.8, image: "https://images.unsplash.com/photo-1588168333986-5078d3ae3976?w=100&auto=format&fit=crop&q=60", type: "raw_material" }
+            ],
+            preparedItems: [
+                { 
+                    id: 101, 
+                    name: "Mozzarella Stick", 
+                    unit: "PCS", 
+                    quantity: 150, 
+                    minimum_stock: 30, 
+                    made_from_item_id: 1, 
+                    pack_size: 7, 
+                    pack_unit: "KG", 
+                    yield_qty: 50, 
+                    yield_unit: "PCS", 
+                    image: "https://images.unsplash.com/photo-1531749668029-2db88e4276c7?w=100&auto=format&fit=crop&q=60", 
+                    type: "prepared" 
+                },
+                { 
+                    id: 102, 
+                    name: "Chicken Breast (portion)", 
+                    unit: "PCS", 
+                    quantity: 45, 
+                    minimum_stock: 20, 
+                    made_from_item_id: 3, 
+                    pack_size: 5, 
+                    pack_unit: "KG", 
+                    yield_qty: 50, 
+                    yield_unit: "PCS", 
+                    image: "https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=100&auto=format&fit=crop&q=60", 
+                    type: "prepared" 
+                },
+                { 
+                    id: 103, 
+                    name: "Beef Patty", 
+                    unit: "PCS", 
+                    quantity: 110, 
+                    minimum_stock: 25, 
+                    made_from_item_id: 4, 
+                    pack_size: 7, 
+                    pack_unit: "KG", 
+                    yield_qty: 50, 
+                    yield_unit: "PCS", 
+                    image: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=100&auto=format&fit=crop&q=60", 
+                    type: "prepared" 
+                }
+            ],
+            branches: [
+                { id: 1, name: "Pacinos HQ" },
+                { id: 2, name: "Eltham" },
+                { id: 3, name: "Bexley" }
+            ]
+        };
+
+        // Initialize Application
+        document.addEventListener('DOMContentLoaded', () => {
+            initApiStatus();
+            renderDropdowns();
+            renderConversionsTable();
+            renderMasterInventory();
+            updateYieldPreview();
+        });
+
+        // Navigation Views
+        function switchView(viewId, navElem) {
+            document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            
+            const target = document.getElementById(viewId);
+            if (target) target.classList.add('active');
+            if (navElem) navElem.classList.add('active');
+
+            // Update Breadcrumb
+            const titles = {
+                'conversions-view': 'Items-Conversions',
+                'add-stock-view': 'Add-Stock',
+                'overview-view': 'Stock-Overview'
+            };
+            document.getElementById('page-breadcrumb').textContent = titles[viewId] || 'Inventory';
+        }
+
+        // Render UI Components
+        function renderDropdowns() {
+            // Made from dropdown
+            const madeFromSelect = document.getElementById('prep-made-from');
+            const stockRawSelect = document.getElementById('stock-raw-select');
+            const distributeItemSelect = document.getElementById('distribute-item-select');
+            const convertPrepSelect = document.getElementById('convert-prepared-select');
+
+            madeFromSelect.innerHTML = appState.rawMaterials.map(m => `<option value="${m.id}">${m.name} (${m.unit})</option>`).join('');
+            stockRawSelect.innerHTML = appState.rawMaterials.map(m => `<option value="${m.id}">${m.name} (Current: ${m.quantity} ${m.unit})</option>`).join('');
+            
+            const allItems = [...appState.rawMaterials, ...appState.preparedItems];
+            distributeItemSelect.innerHTML = allItems.map(i => `<option value="${i.id}">${i.name} [${i.type}] (${i.quantity} ${i.unit})</option>`).join('');
+            convertPrepSelect.innerHTML = appState.preparedItems.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        }
+
+        function renderConversionsTable() {
+            const tbody = document.getElementById('conversions-table-body');
+            tbody.innerHTML = appState.preparedItems.map(item => {
+                const raw = appState.rawMaterials.find(r => r.id === item.made_from_item_id) || { name: 'N/A', unit: 'KG' };
+                const ratioText = `${item.pack_size} ${item.pack_unit || 'KG'} → ${item.yield_qty} ${item.yield_unit || 'PCS'}`;
+
+                return `
+                    <tr data-id="${item.id}">
+                        <td>
+                            <img class="item-thumb" src="${item.image || 'https://via.placeholder.com/40'}" alt="${item.name}">
+                        </td>
+                        <td>
+                            <strong style="font-size: 13.5px;">${item.name}</strong>
+                        </td>
+                        <td>
+                            <select class="select-inline" id="table-raw-${item.id}">
+                                ${appState.rawMaterials.map(r => `<option value="${r.id}" ${r.id === item.made_from_item_id ? 'selected' : ''}>${r.name}</option>`).join('')}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="number" class="input-inline" id="table-pack-${item.id}" value="${item.pack_size}" step="any">
+                            <span style="font-size: 12px; color: var(--text-dim);">${item.pack_unit || 'KG'}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="input-inline" id="table-yield-${item.id}" value="${item.yield_qty}" step="any">
+                            <span style="font-size: 12px; color: var(--text-dim);">${item.yield_unit || 'PCS'}</span>
+                        </td>
+                        <td>
+                            <span class="ratio-badge">${ratioText}</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <button class="btn btn-primary btn-sm" onclick="saveItemConversion(${item.id})">
+                                <i class="fa-solid fa-floppy-disk"></i> Save
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderMasterInventory() {
+            const tbody = document.getElementById('master-inventory-body');
+            const allItems = [...appState.rawMaterials, ...appState.preparedItems];
+
+            tbody.innerHTML = allItems.map(item => {
+                const isLow = item.quantity <= item.minimum_stock;
+                const statusHtml = item.quantity <= 0 
+                    ? `<span style="color: var(--danger); font-weight: 700;">Out of Stock</span>`
+                    : isLow 
+                        ? `<span style="color: var(--warning); font-weight: 700;">Low Stock</span>`
+                        : `<span style="color: var(--success); font-weight: 700;">In Stock</span>`;
+
+                return `
+                    <tr>
+                        <td>#${item.id}</td>
+                        <td>
+                            <div class="item-cell">
+                                <img class="item-thumb" src="${item.image || 'https://via.placeholder.com/35'}" alt="${item.name}">
+                                <div>
+                                    <div style="font-weight: 600;">${item.name}</div>
+                                    <div style="font-size: 11px; color: var(--text-dim);">${item.description || 'No description'}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="ratio-badge" style="text-transform: capitalize;">${item.type.replace('_', ' ')}</span></td>
+                        <td><strong>${item.quantity}</strong> ${item.unit}</td>
+                        <td>${item.minimum_stock} ${item.unit}</td>
+                        <td>${statusHtml}</td>
+                        <td>£${item.purchase_price || '0.00'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Update KPI numbers
+            document.getElementById('kpi-total-items').textContent = allItems.length;
+            document.getElementById('kpi-low-stock').textContent = allItems.filter(i => i.quantity > 0 && i.quantity <= i.minimum_stock).length;
+            document.getElementById('kpi-out-stock').textContent = allItems.filter(i => i.quantity <= 0).length;
+        }
+
+        // Action Handlers
+        async function handleCreateRawMaterial(e) {
+            e.preventDefault();
+            const name = document.getElementById('raw-name').value;
+            const unit = document.getElementById('raw-unit').value;
+            const threshold = parseFloat(document.getElementById('raw-threshold').value) || 0;
+            const qty = parseFloat(document.getElementById('raw-qty').value) || 0;
+            const desc = document.getElementById('raw-desc').value;
+
+            const newItem = {
+                id: Date.now(),
+                name,
+                unit,
+                minimum_stock: threshold,
+                quantity: qty,
+                purchase_price: 1.5,
+                description: desc,
+                type: 'raw_material',
+                image: "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=100&auto=format&fit=crop&q=60"
+            };
+
+            // Call Backend API if token available
+            if (appState.isLiveApi) {
+                try {
+                    const res = await apiFetch('/inventory-items', 'POST', {
+                        branch_id: 1,
+                        category_id: 1,
+                        type: 'raw_material',
+                        name,
+                        unit,
+                        quantity: qty,
+                        minimum_stock: threshold,
+                        purchase_price: 1.5,
+                        description: desc
+                    });
+                    if (res) newItem.id = res.id;
+                } catch (err) {
+                    console.warn("API Call fallback to mock:", err);
+                }
+            }
+
+            appState.rawMaterials.push(newItem);
+            showToast(`Added raw material "${name}" successfully!`, 'success');
+            document.getElementById('raw-material-form').reset();
+            document.getElementById('raw-img-preview').innerHTML = '';
+            
+            renderDropdowns();
+            renderConversionsTable();
+            renderMasterInventory();
+        }
+
+        async function handleCreatePreparedItem(e) {
+            e.preventDefault();
+            const name = document.getElementById('prep-name').value;
+            const madeFromId = parseInt(document.getElementById('prep-made-from').value);
+            const unit = document.getElementById('prep-unit').value;
+            const packSize = parseFloat(document.getElementById('prep-pack-size').value);
+            const yieldQty = parseFloat(document.getElementById('prep-yield-qty').value);
+            const threshold = parseFloat(document.getElementById('prep-threshold').value) || 0;
+            const desc = document.getElementById('prep-desc').value;
+
+            const rawMaterial = appState.rawMaterials.find(r => r.id === madeFromId);
+
+            const newItem = {
+                id: Date.now(),
+                name,
+                made_from_item_id: madeFromId,
+                unit,
+                pack_size: packSize,
+                pack_unit: rawMaterial ? rawMaterial.unit : 'KG',
+                yield_qty: yieldQty,
+                yield_unit: unit,
+                minimum_stock: threshold,
+                quantity: 0,
+                purchase_price: 0,
+                description: desc,
+                type: 'prepared',
+                image: "https://images.unsplash.com/photo-1531749668029-2db88e4276c7?w=100&auto=format&fit=crop&q=60"
+            };
+
+            if (appState.isLiveApi) {
+                try {
+                    const res = await apiFetch('/inventory-items', 'POST', {
+                        branch_id: 1,
+                        category_id: 1,
+                        type: 'prepared',
+                        name,
+                        made_from_item_id: madeFromId,
+                        unit,
+                        pack_size: packSize,
+                        pack_unit: rawMaterial?.unit || 'KG',
+                        yield_qty: yieldQty,
+                        yield_unit: unit,
+                        quantity: 0,
+                        minimum_stock: threshold,
+                        purchase_price: 0,
+                        description: desc
+                    });
+                    if (res) newItem.id = res.id;
+                } catch (err) {
+                    console.warn("API Fallback:", err);
+                }
+            }
+
+            appState.preparedItems.push(newItem);
+            showToast(`Added prepared item "${name}" with ratio!`, 'success');
+            document.getElementById('prepared-item-form').reset();
+            document.getElementById('prep-img-preview').innerHTML = '';
+
+            renderDropdowns();
+            renderConversionsTable();
+            renderMasterInventory();
+        }
+
+        async function saveItemConversion(itemId) {
+            const item = appState.preparedItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            const newRawId = parseInt(document.getElementById(`table-raw-${itemId}`).value);
+            const newPack = parseFloat(document.getElementById(`table-pack-${itemId}`).value);
+            const newYield = parseFloat(document.getElementById(`table-yield-${itemId}`).value);
+
+            item.made_from_item_id = newRawId;
+            item.pack_size = newPack;
+            item.yield_qty = newYield;
+
+            if (appState.isLiveApi) {
+                try {
+                    await apiFetch(`/inventory-items/${itemId}`, 'PUT', {
+                        made_from_item_id: newRawId,
+                        pack_size: newPack,
+                        yield_qty: newYield
+                    });
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+
+            showToast(`Updated conversion ratio for "${item.name}"!`, 'success');
+            renderConversionsTable();
+            updateYieldPreview();
+        }
+
+        async function handleStockPurchase(e) {
+            e.preventDefault();
+            const rawId = parseInt(document.getElementById('stock-raw-select').value);
+            const qty = parseFloat(document.getElementById('stock-qty-purchased').value);
+            const cost = parseFloat(document.getElementById('stock-cost').value) || 0;
+
+            const raw = appState.rawMaterials.find(r => r.id === rawId);
+            if (!raw) return;
+
+            if (appState.isLiveApi) {
+                try {
+                    await apiFetch('/inventory-transactions', 'POST', {
+                        inventory_item_id: rawId,
+                        transaction_type: 'purchase',
+                        quantity: qty,
+                        notes: `Cost: £${cost}`
+                    });
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+
+            raw.quantity += qty;
+            showToast(`Purchased +${qty} ${raw.unit} of ${raw.name}!`, 'success');
+            document.getElementById('stock-purchase-form').reset();
+            
+            renderDropdowns();
+            renderMasterInventory();
+        }
+
+        async function handleStockConvert(e) {
+            e.preventDefault();
+            const prepId = parseInt(document.getElementById('convert-prepared-select').value);
+            const packs = parseFloat(document.getElementById('convert-packs').value);
+
+            const prep = appState.preparedItems.find(p => p.id === prepId);
+            if (!prep) return;
+
+            const raw = appState.rawMaterials.find(r => r.id === prep.made_from_item_id);
+            if (!raw) {
+                showToast("Source raw material not found!", "error");
+                return;
+            }
+
+            const rawNeeded = prep.pack_size * packs;
+            const yieldProduced = prep.yield_qty * packs;
+
+            if (raw.quantity < rawNeeded) {
+                showToast(`Insufficient stock! Need ${rawNeeded} ${raw.unit} of ${raw.name}, have ${raw.quantity} ${raw.unit}`, "error");
+                return;
+            }
+
+            if (appState.isLiveApi) {
+                try {
+                    await apiFetch('/stock-conversions/convert', 'POST', {
+                        prepared_item_id: prepId,
+                        packs: packs
+                    });
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+
+            raw.quantity -= rawNeeded;
+            prep.quantity += yieldProduced;
+
+            showToast(`Converted ${rawNeeded} ${raw.unit} ${raw.name} into +${yieldProduced} ${prep.unit} ${prep.name}!`, 'success');
+            document.getElementById('stock-convert-form').reset();
+            updateYieldPreview();
+            
+            renderDropdowns();
+            renderMasterInventory();
+        }
+
+        async function handleStockDistribute(e) {
+            e.preventDefault();
+            const itemId = parseInt(document.getElementById('distribute-item-select').value);
+            const branchId = document.getElementById('distribute-branch-select').value;
+            const branchName = document.getElementById('distribute-branch-select').options[document.getElementById('distribute-branch-select').selectedIndex].text;
+            const qty = parseFloat(document.getElementById('distribute-qty').value);
+
+            const allItems = [...appState.rawMaterials, ...appState.preparedItems];
+            const item = allItems.find(i => i.id === itemId);
+
+            if (!item) return;
+
+            if (item.quantity < qty) {
+                showToast(`Insufficient stock! Current stock: ${item.quantity} ${item.unit}`, "error");
+                return;
+            }
+
+            if (appState.isLiveApi) {
+                try {
+                    await apiFetch(`/inventory-items/${itemId}/distribute`, 'POST', {
+                        branch_id: branchId,
+                        quantity: qty
+                    });
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+
+            item.quantity -= qty;
+            showToast(`Distributed ${qty} ${item.unit} of ${item.name} to ${branchName}!`, 'success');
+            document.getElementById('stock-distribute-form').reset();
+
+            renderDropdowns();
+            renderMasterInventory();
+        }
+
+        function updateYieldPreview() {
+            const prepId = parseInt(document.getElementById('convert-prepared-select').value);
+            const packs = parseFloat(document.getElementById('convert-packs').value) || 0;
+            const previewInput = document.getElementById('convert-yield-preview');
+
+            const prep = appState.preparedItems.find(p => p.id === prepId);
+            if (!prep || packs <= 0) {
+                previewInput.value = "Select item and pack count...";
+                return;
+            }
+
+            const raw = appState.rawMaterials.find(r => r.id === prep.made_from_item_id);
+            const rawName = raw ? raw.name : 'Raw Material';
+            const rawUnit = raw ? raw.unit : 'KG';
+
+            const totalRaw = prep.pack_size * packs;
+            const totalYield = prep.yield_qty * packs;
+
+            previewInput.value = `+${totalYield} ${prep.unit} (uses ${totalRaw} ${rawUnit} ${rawName})`;
+        }
+
+        // File Selection Helper
+        function handleFileSelect(event, previewContainerId) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById(previewContainerId).innerHTML = `
+                    <div class="image-preview-chip">
+                        <img src="${e.target.result}" alt="Preview">
+                        <span class="image-preview-name">${file.name}</span>
+                        <i class="fa-solid fa-xmark image-preview-remove" onclick="removeImagePreview('${previewContainerId}', '${event.target.id}')"></i>
+                    </div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeImagePreview(previewId, inputId) {
+            document.getElementById(previewId).innerHTML = '';
+            document.getElementById(inputId).value = '';
+        }
+
+        // API Helpers
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const headers = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            };
+
+            if (appState.bearerToken) {
+                headers['Authorization'] = `Bearer ${appState.bearerToken}`;
+            }
+
+            const url = `${appState.apiBaseUrl.replace(/\/$/, '')}${endpoint}`;
+            const options = { method, headers };
+            if (body) options.body = JSON.stringify(body);
+
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.message || `API Error: ${res.status}`);
+            }
+            return await res.json();
+        }
+
+        // API Settings Modal
+        function openApiModal() {
+            document.getElementById('api-base-url').value = appState.apiBaseUrl;
+            document.getElementById('api-bearer-token').value = appState.bearerToken;
+            document.getElementById('api-modal').classList.add('active');
+        }
+
+        function closeApiModal() {
+            document.getElementById('api-modal').classList.remove('active');
+        }
+
+        function saveApiSettings() {
+            appState.apiBaseUrl = document.getElementById('api-base-url').value.trim();
+            appState.bearerToken = document.getElementById('api-bearer-token').value.trim();
+
+            localStorage.setItem('inventory_api_base', appState.apiBaseUrl);
+            localStorage.setItem('inventory_bearer_token', appState.bearerToken);
+
+            initApiStatus();
+            closeApiModal();
+            showToast('API Configuration saved!', 'success');
+        }
+
+        function initApiStatus() {
+            const indicator = document.getElementById('api-status-indicator');
+            const text = document.getElementById('api-status-text');
+
+            if (appState.bearerToken) {
+                appState.isLiveApi = true;
+                indicator.style.background = 'var(--success)';
+                indicator.style.boxShadow = '0 0 8px var(--success)';
+                text.textContent = 'API: Live Laravel Connected';
+            } else {
+                appState.isLiveApi = false;
+                indicator.style.background = 'var(--warning)';
+                indicator.style.boxShadow = '0 0 8px var(--warning)';
+                text.textContent = 'API: Interactive Demo Mode';
+            }
+        }
+
+        // Toast Messages
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icon = type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info';
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>

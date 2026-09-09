@@ -168,6 +168,7 @@ class InventoryItemController extends Controller
             'total_items_change_percent' => $itemsChangePercent,
             'low_stock_items' => $lowStockItems,
             'out_of_stock_items' => $outOfStockItems,
+            'total_branches' => \App\Models\Branch::count(),
             'total_stock_value' => round((float) $totalStockValue, 2),
             'total_stock_value_change_percent' => $valueChangePercent,
         ]);
