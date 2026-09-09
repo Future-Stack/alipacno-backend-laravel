@@ -15,6 +15,7 @@ class Staff extends Model
 
     protected $fillable = [
         'employee_id',
+        'user_id',
         'branch_id',
         'name',
         'image',
@@ -120,5 +121,10 @@ class Staff extends Model
                 return asset('storage/' . $this->image);
             }
         );
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }

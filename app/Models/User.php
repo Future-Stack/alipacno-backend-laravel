@@ -64,8 +64,8 @@ class User extends Authenticatable
             return (float) $this->attributes['latitude'];
         }
 
-        $addr = $this->relationLoaded('defaultAddress') 
-            ? $this->defaultAddress 
+        $addr = $this->relationLoaded('defaultAddress')
+            ? $this->defaultAddress
             : ($this->relationLoaded('address') ? $this->address : null);
 
         if ($addr && $addr->latitude !== null) {
@@ -89,8 +89,8 @@ class User extends Authenticatable
             return (float) $this->attributes['longitude'];
         }
 
-        $addr = $this->relationLoaded('defaultAddress') 
-            ? $this->defaultAddress 
+        $addr = $this->relationLoaded('defaultAddress')
+            ? $this->defaultAddress
             : ($this->relationLoaded('address') ? $this->address : null);
 
         if ($addr && $addr->longitude !== null) {
@@ -367,5 +367,10 @@ class User extends Authenticatable
     public function driver(): HasOne
     {
         return $this->hasOne(Driver::class);
+    }
+
+    public function staff()
+    {
+        return $this->hasOne(Staff::class);
     }
 }

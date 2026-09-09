@@ -177,7 +177,7 @@ class StaffController extends Controller
 
         // Database Transaction shuru
         $staff = DB::transaction(function () use ($validated, $imagePath) {
-            
+
             // 1. Create User
             $user = User::create([
                 'name'      => $validated['name'],
@@ -188,7 +188,10 @@ class StaffController extends Controller
                 'role_id'   => $validated['role_id'] ?? null,
                 'avatar'    => $imagePath,
                 'status'    => $validated['status'] ?? 'active',
+                'email_verified_at' => now()
             ]);
+
+            $validated['user_id'] = $user->id;
 
             // 2. Create Staff
             $staff = Staff::create($validated);

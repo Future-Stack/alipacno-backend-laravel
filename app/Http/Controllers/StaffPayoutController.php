@@ -7,6 +7,7 @@ use App\Models\StaffPayout;
 use App\Services\StaffPayoutService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Stripe\StripeClient;
 
@@ -237,11 +238,20 @@ class StaffPayoutController extends Controller
      */
     public function stripeOnboard(Request $request)
     {
-        $validated = $request->validate([
-            'staff_id' => 'required|exists:staff,id',
-        ]);
+//        $validated = $request->validate([
+//            'staff_id' => 'required|exists:staff,id',
+//        ]);
 
-        $staff = Staff::findOrFail($validated['staff_id']);
+        $user = Auth::user();
+        $staff = Staff::where('user_id', $user?->id)->first();
+
+        if (!$staff) {
+            $staff = Staff::where('id', $request->input('staff_id'))->first();
+        }
+
+        if (!$staff) {
+            return response()->json(['status' => 404, 'message' => 'Staff profile not found.'], 404);
+        }
 
         // Auto sync first if staff completed it previously
         if ($staff->stripe_account_id && !$staff->stripe_onboarding_completed) {
