@@ -11,6 +11,8 @@ use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use App\Models\StaffAttendance;
 use Illuminate\Support\Facades\DB;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 class StaffController extends Controller
 {
@@ -82,76 +84,65 @@ class StaffController extends Controller
                 'max:255',
                 'unique:staff,employee_id',
             ],
-
             'branch_id' => [
                 'required',
                 'exists:branches,id',
             ],
-
             'name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'image' => [
                 'nullable',
                 'image',
                 'mimes:jpg,jpeg,png,webp',
                 'max:2048',
             ],
-
             'email' => [
-                'nullable',
+                'required',
                 'email',
                 'max:255',
+                'unique:users,email',
             ],
-
             'phone' => [
                 'required',
                 'string',
                 'max:50',
+                'unique:users,phone',
             ],
-
             'role_id' => [
                 'nullable',
                 'exists:roles,id',
             ],
-
             'shift' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'time_in' => [
                 'nullable',
                 'date_format:H:i',
             ],
-
             'time_out' => [
                 'nullable',
                 'date_format:H:i',
             ],
-
             'salary' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'commission' => [
                 'nullable',
                 'numeric',
                 'min:0',
                 'max:100',
             ],
-
             'hire_date' => [
                 'nullable',
                 'date',
             ],
-
             'status' => [
                 'nullable',
                 'string',
@@ -164,6 +155,11 @@ class StaffController extends Controller
                     'absent',
                 ]),
             ],
+            'password' => [
+                'nullable',
+                'string',
+                'min:8', // User login-er jonno password (optional rakha jay)
+            ],
         ]);
 
         // Validate time in / time out
@@ -173,19 +169,38 @@ class StaffController extends Controller
         );
 
         // Upload staff image
+        $imagePath = null;
         if ($request->hasFile('image')) {
-            $validated['image'] = $request
-                ->file('image')
-                ->store('staff', 'public');
+            $imagePath = $request->file('image')->store('staff', 'public');
+            $validated['image'] = $imagePath;
         }
 
-        $staff = Staff::create($validated);
+        // Database Transaction shuru
+        $staff = DB::transaction(function () use ($validated, $imagePath) {
+            
+            // 1. Create User
+            $user = User::create([
+                'name'      => $validated['name'],
+                'email'     => $validated['email'],
+                'phone'     => $validated['phone'],
+                'password'  => Hash::make($validated['password'] ?? '12345678'), // Default password or input password
+                'user_type' => 'staff', // Athoba apnar system er specific user_type (e.g., 'staff')
+                'role_id'   => $validated['role_id'] ?? null,
+                'avatar'    => $imagePath,
+                'status'    => $validated['status'] ?? 'active',
+            ]);
+
+            // 2. Create Staff
+            $staff = Staff::create($validated);
+
+            return $staff;
+        });
 
         $staff->load(['branch', 'role']);
 
         return response()->json([
-            'message' => 'Staff created successfully.',
-            'data' => $staff,
+            'message' => 'Staff and user account created successfully.',
+            'data'    => $staff,
         ], 201);
     }
 

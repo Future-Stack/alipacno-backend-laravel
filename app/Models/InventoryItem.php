@@ -17,7 +17,22 @@ class InventoryItem extends Model
         'made_from_item_id', 'pack_size', 'pack_unit', 'yield_qty', 'yield_unit',
     ];
 
-    protected $appends = ['image_url'];
+    protected $appends = ['image_url', 'undistributed', 'total', 'threshold'];
+
+    public function getUndistributedAttribute(): float
+    {
+        return (float) $this->quantity;
+    }
+
+    public function getTotalAttribute(): float
+    {
+        return (float) static::where('name', $this->name)->sum('quantity');
+    }
+
+    public function getThresholdAttribute(): float
+    {
+        return (float) $this->minimum_stock;
+    }
 
     public function getImageUrlAttribute(): ?string
     {
