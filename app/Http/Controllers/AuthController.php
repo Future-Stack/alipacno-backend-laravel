@@ -530,7 +530,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $user->load(['driver.branch', 'branchAdmin.branch', 'role.permissions']);
+        $user->load(['driver.branch', 'branchAdmin.branch', 'role.permissions','staff']);
 
         // Revoke previous tokens optionally
         $user->tokens()->delete();
