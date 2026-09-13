@@ -798,7 +798,8 @@ class DriverController extends Controller
 
     /**
      * Get Driver Deliveries grouped / filtered by tabs:
-     * - all
+     * - all (ongoing + upcoming)
+     * - upcoming (unassigned branch orders)
      * - ongoing (assigned, picked_up, on_the_way)
      * - completed (delivered)
      */
@@ -821,8 +822,32 @@ class DriverController extends Controller
         }
 
         $tab = $request->input('tab', 'all'); // 'all', 'upcoming', 'ongoing', 'completed'
+        $perPage = (int) $request->input('per_page', 15);
+        $page = (int) $request->input('page', 1);
 
-        // Counts for tab badges
+        // If driver is offline, tab_counts are all 0 and deliveries return empty
+        if (!$driver->is_online) {
+            return response()->json([
+                'tab_counts' => [
+                    'all' => 0,
+                    'upcoming' => 0,
+                    'ongoing' => 0,
+                    'completed' => 0,
+                ],
+                'current_tab' => $tab,
+                'is_online' => false,
+                'message' => 'Driver is currently offline. Please turn online status ON to view deliveries.',
+                'deliveries' => [
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'per_page' => $perPage,
+                    'total' => 0,
+                    'data' => [],
+                ],
+            ]);
+        }
+
+        // 1. Calculate Tab Counts
         $declinedOrderIds = DriverDeclinedOrder::where('driver_id', $driver->id)->pluck('order_id')->toArray();
         $upcomingCount = Order::where('order_type', 'delivery')
             ->whereNull('assigned_driver_id')
@@ -839,7 +864,8 @@ class DriverController extends Controller
             ->where('delivery_status', 'delivered')
             ->count();
 
-        $allCount = Delivery::where('driver_id', $driver->id)->count();
+        // 'all' tab count consists of upcoming + ongoing
+        $allCount = $upcomingCount + $ongoingCount;
 
         $tabCounts = [
             'all' => $allCount,
@@ -848,25 +874,115 @@ class DriverController extends Controller
             'completed' => $completedCount,
         ];
 
-        // If tab is upcoming, return formatted unassigned orders
-        if ($tab === 'upcoming') {
-            if (!$driver->is_online) {
-                return response()->json([
-                    'tab_counts' => $tabCounts,
-                    'current_tab' => $tab,
-                    'is_online' => false,
-                    'message' => 'Driver is currently offline. Please turn online status ON to view upcoming delivery requests.',
-                    'deliveries' => [
-                        'current_page' => 1,
-                        'last_page' => 1,
-                        'per_page' => (int) $request->input('per_page', 15),
-                        'total' => 0,
-                        'data' => [],
-                    ],
-                ]);
-            }
+        // Helper to format Order into delivery structure
+        $formatOrder = function ($order) {
+            $firstItem = $order->items->first();
+            $menuItem = $firstItem?->menuItem;
+            $itemsCount = $order->items->count();
+            $earnings = (float) $order->delivery_fee;
 
-            $upcomingQuery = Order::with(['items.menuItem', 'branch', 'address'])
+            return [
+                'id' => null,
+                'order_id' => $order->id,
+                'driver_id' => null,
+                'delivery_status' => 'pending',
+                'order_number' => $order->order_number,
+                'order_status' => $order->order_status,
+                'payment_status' => $order->payment_status,
+                'payment_method' => $order->payment_method,
+                'category_tag' => $menuItem?->category?->name ?? 'Special',
+                'title' => $menuItem ? $menuItem->name . ($itemsCount > 1 ? " + " . ($itemsCount - 1) . " more" : "") : 'Delivery Package',
+                'image_url' => $menuItem?->image_url ?? null,
+                'earnings' => $earnings,
+                'formatted_earnings' => '£' . number_format($earnings, 2),
+                'delivery_fee' => (float) $order->delivery_fee,
+                'formatted_delivery_fee' => $order->delivery_fee > 0 ? '£' . number_format((float) $order->delivery_fee, 2) : 'Free',
+                'rider_tip' => (float) $order->rider_tip,
+                'formatted_rider_tip' => '£' . number_format((float) $order->rider_tip, 2),
+                'total_order_amount' => (float) $order->total,
+                'formatted_total_amount' => '£' . number_format((float) $order->total, 2),
+                'pickup_location' => $order->branch ? ($order->branch->address ?? $order->branch->name) : 'Pacinos Branch',
+                'delivery_location' => $order->delivery_address ?? ($order->address ? $order->address->address_line_1 . ', ' . $order->address->postcode : 'Customer Location'),
+                'customer_name' => $order->customer_name ?? $order->user?->name ?? 'Valued Customer',
+                'customer_phone' => $order->customer_phone ?? $order->user?->phone ?? 'N/A',
+                'distance_km' => $order->calculateDistanceKm(),
+                'distance_remaining' => $order->calculateDistanceKm() . ' km Remaining',
+                'time_remaining_minutes' => $order->calculateRemainingMinutes(),
+                'time_remaining' => $order->calculateRemainingMinutes() . ' mins Remaining',
+                'delivery_time_formatted' => $order->estimated_delivery_time ? Carbon::parse($order->estimated_delivery_time)->format('l, M d, h:i A') : $order->created_at->format('l, M d, h:i A'),
+                'created_at' => $order->created_at->toIso8601String(),
+                'items' => $order->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->menuItem?->name ?? 'Menu Item',
+                        'quantity' => $item->quantity,
+                        'price' => (float) $item->unit_price,
+                        'image_url' => $item->menuItem?->image_url,
+                    ];
+                }),
+                'order' => $order,
+            ];
+        };
+
+        // Helper to format Delivery model into delivery structure
+        $formatDelivery = function ($delivery) {
+            $order = $delivery->order;
+            $firstItem = $order?->items?->first();
+            $menuItem = $firstItem?->menuItem;
+            $itemsCount = $order?->items?->count() ?? 0;
+            $earnings = (float) ($order?->delivery_fee ?? $delivery->driver_fee ?? 0);
+
+            return [
+                'id' => $delivery->id,
+                'order_id' => $delivery->order_id,
+                'driver_id' => $delivery->driver_id,
+                'delivery_status' => $delivery->delivery_status,
+                'pickup_time' => $delivery->pickup_time?->toIso8601String(),
+                'delivered_time' => $delivery->delivered_time?->toIso8601String(),
+                'estimated_time' => $delivery->estimated_time?->toIso8601String(),
+                'order_number' => $order?->order_number,
+                'order_status' => $order?->order_status,
+                'payment_status' => $order?->payment_status,
+                'payment_method' => $order?->payment_method,
+                'category_tag' => $menuItem?->category?->name ?? 'Special',
+                'title' => $menuItem ? $menuItem->name . ($itemsCount > 1 ? " + " . ($itemsCount - 1) . " more" : "") : 'Delivery Package',
+                'image_url' => $menuItem?->image_url ?? null,
+                'earnings' => $earnings,
+                'formatted_earnings' => '£' . number_format($earnings, 2),
+                'delivery_fee' => (float) ($order?->delivery_fee ?? 0),
+                'formatted_delivery_fee' => ($order?->delivery_fee ?? 0) > 0 ? '£' . number_format((float) $order->delivery_fee, 2) : 'Free',
+                'rider_tip' => (float) ($order?->rider_tip ?? 0),
+                'formatted_rider_tip' => '£' . number_format((float) ($order?->rider_tip ?? 0), 2),
+                'total_order_amount' => (float) ($order?->total ?? 0),
+                'formatted_total_amount' => '£' . number_format((float) ($order?->total ?? 0), 2),
+                'pickup_location' => $order?->branch ? ($order->branch->address ?? $order->branch->name) : 'Pacinos Branch',
+                'delivery_location' => $order?->delivery_address ?? ($order?->address ? $order->address->address_line_1 . ', ' . $order->address->postcode : 'Customer Location'),
+                'customer_name' => $order?->customer_name ?? $order?->user?->name ?? 'Valued Customer',
+                'customer_phone' => $order?->customer_phone ?? $order?->user?->phone ?? 'N/A',
+                'distance_km' => $order ? $order->calculateDistanceKm() : 0,
+                'distance_remaining' => ($order ? $order->calculateDistanceKm() : 0) . ' km Remaining',
+                'time_remaining_minutes' => $order ? $order->calculateRemainingMinutes() : 0,
+                'time_remaining' => ($order ? $order->calculateRemainingMinutes() : 0) . ' mins Remaining',
+                'delivery_time_formatted' => $delivery->estimated_time ? Carbon::parse($delivery->estimated_time)->format('l, M d, h:i A') : ($order?->created_at?->format('l, M d, h:i A') ?? ''),
+                'created_at' => $delivery->created_at?->toIso8601String(),
+                'updated_at' => $delivery->updated_at?->toIso8601String(),
+                'items' => $order?->items ? $order->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->menuItem?->name ?? 'Menu Item',
+                        'quantity' => $item->quantity,
+                        'price' => (float) $item->unit_price,
+                        'image_url' => $item->menuItem?->image_url,
+                    ];
+                }) : [],
+                'order' => $order,
+                'driver' => $delivery->driver,
+            ];
+        };
+
+        // 2. Fetch and paginate based on tab
+        if ($tab === 'upcoming') {
+            $upcomingQuery = Order::with(['items.menuItem', 'branch', 'address', 'user'])
                 ->where('order_type', 'delivery')
                 ->whereNull('assigned_driver_id')
                 ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
@@ -874,71 +990,70 @@ class DriverController extends Controller
                 ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
                 ->latest();
 
-            $upcomingOrders = $upcomingQuery->paginate($request->input('per_page', 15));
-
-            $formattedUpcoming = $upcomingOrders->getCollection()->map(function ($order) {
-                $firstItem = $order->items->first();
-                $menuItem = $firstItem?->menuItem;
-                $itemsCount = $order->items->count();
-                $earnings = (float) $order->delivery_fee;
-
-                return [
-                    'id' => null,
-                    'order_id' => $order->id,
-                    'driver_id' => null,
-                    'delivery_status' => 'pending',
-                    'order_number' => $order->order_number,
-                    'order_status' => $order->order_status,
-                    'payment_status' => $order->payment_status,
-                    'payment_method' => $order->payment_method,
-                    'category_tag' => $menuItem?->category?->name ?? 'Special',
-                    'title' => $menuItem ? $menuItem->name . ($itemsCount > 1 ? " + " . ($itemsCount - 1) . " more" : "") : 'Delivery Package',
-                    'image_url' => $menuItem?->image_url ?? null,
-                    'earnings' => $earnings,
-                    'formatted_earnings' => '£' . number_format($earnings, 2),
-                    'delivery_fee' => (float) $order->delivery_fee,
-                    'formatted_delivery_fee' => $order->delivery_fee > 0 ? '£' . number_format((float) $order->delivery_fee, 2) : 'Free',
-                    'rider_tip' => (float) $order->rider_tip,
-                    'formatted_rider_tip' => '£' . number_format((float) $order->rider_tip, 2),
-                    'total_order_amount' => (float) $order->total,
-                    'formatted_total_amount' => '£' . number_format((float) $order->total, 2),
-                    'pickup_location' => $order->branch ? ($order->branch->address ?? $order->branch->name) : 'Pacinos Branch',
-                    'delivery_location' => $order->delivery_address ?? ($order->address ? $order->address->address_line_1 . ', ' . $order->address->postcode : 'Customer Location'),
-                    'customer_name' => $order->customer_name ?? $order->user?->name ?? 'Valued Customer',
-                    'customer_phone' => $order->customer_phone ?? $order->user?->phone ?? 'N/A',
-                    'distance_km' => $order->calculateDistanceKm(),
-                    'distance_remaining' => $order->calculateDistanceKm() . ' km Remaining',
-                    'time_remaining_minutes' => $order->calculateRemainingMinutes(),
-                    'time_remaining' => $order->calculateRemainingMinutes() . ' mins Remaining',
-                    'delivery_time_formatted' => $order->estimated_delivery_time ? Carbon::parse($order->estimated_delivery_time)->format('l, M d, h:i A') : $order->created_at->format('l, M d, h:i A'),
-                    'created_at' => $order->created_at->toIso8601String(),
-                    'items' => $order->items->map(function ($item) {
-                        return [
-                            'id' => $item->id,
-                            'name' => $item->menuItem?->name ?? 'Menu Item',
-                            'quantity' => $item->quantity,
-                            'price' => (float) $item->unit_price,
-                            'image_url' => $item->menuItem?->image_url,
-                        ];
-                    }),
-                    'order' => $order,
-                ];
-            });
+            $upcomingOrders = $upcomingQuery->paginate($perPage);
 
             return response()->json([
                 'tab_counts' => $tabCounts,
                 'current_tab' => $tab,
-                'is_online' => (bool) $driver->is_online,
+                'is_online' => true,
                 'deliveries' => [
                     'current_page' => $upcomingOrders->currentPage(),
                     'last_page' => $upcomingOrders->lastPage(),
                     'per_page' => $upcomingOrders->perPage(),
                     'total' => $upcomingOrders->total(),
-                    'data' => $formattedUpcoming,
+                    'data' => $upcomingOrders->getCollection()->map($formatOrder)->values(),
                 ],
             ]);
         }
 
+        if ($tab === 'all') {
+            // Fetch ongoing deliveries
+            $ongoingDeliveries = Delivery::with([
+                'order.items.menuItem',
+                'order.branch',
+                'order.user.defaultAddress',
+                'order.user.address',
+                'order.address',
+                'driver.user',
+            ])
+                ->where('driver_id', $driver->id)
+                ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                ->latest()
+                ->get()
+                ->map($formatDelivery);
+
+            // Fetch upcoming orders
+            $upcomingOrders = Order::with(['items.menuItem', 'branch', 'address', 'user'])
+                ->where('order_type', 'delivery')
+                ->whereNull('assigned_driver_id')
+                ->whereIn('order_status', ['preparing', 'ready', 'accepted'])
+                ->whereNotIn('id', $declinedOrderIds)
+                ->when($driver->branch_id, fn($q) => $q->where('branch_id', $driver->branch_id))
+                ->latest()
+                ->get()
+                ->map($formatOrder);
+
+            // Merge ongoing deliveries (first) + upcoming orders (next)
+            $merged = $ongoingDeliveries->concat($upcomingOrders);
+            $total = $merged->count();
+            $sliced = $merged->slice(($page - 1) * $perPage, $perPage)->values();
+            $lastPage = (int) ceil($total / max(1, $perPage));
+
+            return response()->json([
+                'tab_counts' => $tabCounts,
+                'current_tab' => $tab,
+                'is_online' => true,
+                'deliveries' => [
+                    'current_page' => $page,
+                    'last_page' => max(1, $lastPage),
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'data' => $sliced,
+                ],
+            ]);
+        }
+
+        // 'ongoing' or 'completed' tab
         $query = Delivery::with([
             'order.items.menuItem',
             'order.branch',
@@ -958,13 +1073,20 @@ class DriverController extends Controller
             $query->where('delivery_status', 'delivered');
         }
 
-        $deliveries = $query->paginate($request->input('per_page', 15));
+        $deliveries = $query->paginate($perPage);
 
         return response()->json([
             'tab_counts' => $tabCounts,
             'current_tab' => $tab,
-            'is_online' => (bool) $driver->is_online,
-            'deliveries' => $deliveries,
+            'is_online' => true,
+            'deliveries' => [
+                'current_page' => $deliveries->currentPage(),
+                'last_page' => $deliveries->lastPage(),
+                'per_page' => $deliveries->perPage(),
+                'total' => $deliveries->total(),
+                'data' => $deliveries->getCollection()->map($formatDelivery)->values(),
+            ],
         ]);
     }
 }
+
