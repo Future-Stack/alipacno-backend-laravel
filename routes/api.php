@@ -326,6 +326,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/staff/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
             Route::get('/cash-reconciliation/{branch_id}', [StaffController::class, 'cashReconciliationOverview']);
             Route::post('/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
+            Route::get('/staff/earnings', [StaffPayoutController::class, 'staffEarnings']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
             Route::post('staff-attendance/clock-out', [StaffAttendanceController::class, 'clockOut']);

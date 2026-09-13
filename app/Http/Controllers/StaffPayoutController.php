@@ -208,6 +208,54 @@ class StaffPayoutController extends Controller
     }
 
     /**
+     * Staff App: View breakdown of staff earnings & attendance stats.
+     */
+    public function staffEarnings(Request $request)
+    {
+        $user = Auth::user();
+        $staff = Staff::where('user_id', $user?->id)->first();
+
+        if (!$staff) {
+            $staff = Staff::where('id', $request->input('staff_id'))->first();
+        }
+
+        if (!$staff) {
+            return response()->json(['status' => 404, 'message' => 'Staff profile not found.'], 404);
+        }
+
+        // Auto-sync Stripe onboarding status
+        $this->syncStripeStatus($staff);
+
+        // Current week calculation
+        $currentWeekStart = Carbon::now()->startOfWeek();
+        $currentWeekEnd = Carbon::now()->endOfWeek();
+        $currentEarnings = $this->payoutService->calculateEarnings($staff, $currentWeekStart, $currentWeekEnd);
+
+        // Previous week calculation (Week N for 1-week payment lag)
+        $previousWeekStart = Carbon::now()->subWeek()->startOfWeek();
+        $previousWeekEnd = Carbon::now()->subWeek()->endOfWeek();
+        $previousEarnings = $this->payoutService->calculateEarnings($staff, $previousWeekStart, $previousWeekEnd);
+
+        // Payout history
+        $payoutHistory = StaffPayout::where('staff_id', $staff->id)
+            ->orderBy('year', 'desc')
+            ->orderBy('week_number', 'desc')
+            ->take(10)
+            ->get();
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'staff_id' => $staff->id,
+                'stripe_onboarding_completed' => (bool) $staff->fresh()->stripe_onboarding_completed,
+                'current_week' => $currentEarnings,
+                'previous_week_lagged' => $previousEarnings,
+                'payout_history' => $payoutHistory,
+            ],
+        ]);
+    }
+
+    /**
      * Staff Stripe onboarding status check & sync.
      */
     public function stripeStatus(Request $request)
