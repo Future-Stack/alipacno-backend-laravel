@@ -27,7 +27,7 @@ class DriverController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        $query = Driver::with(['branch', 'user', 'deliveries' => function ($q) {
+        $query = Driver::with(['branch', 'user', 'staff', 'deliveries' => function ($q) {
             $q->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way']);
         }]);
 
@@ -142,8 +142,20 @@ class DriverController extends Controller
             ? ['user_id' => $validated['user_id']]
             : ['phone' => $validated['phone']];
 
+        // Link with staff_id if a staff record exists for this user or phone
+        $staff = null;
+        if (!empty($validated['user_id'])) {
+            $staff = \App\Models\Staff::where('user_id', $validated['user_id'])->first();
+        }
+        if (!$staff && !empty($validated['phone'])) {
+            $staff = \App\Models\Staff::where('phone', $validated['phone'])->first();
+        }
+        if ($staff) {
+            $validated['staff_id'] = $staff->id;
+        }
+
         $driver = Driver::updateOrCreate($matchCriteria, $validated);
-        $freshDriver = $driver->load(['branch', 'user']);
+        $freshDriver = $driver->load(['branch', 'user', 'staff']);
 
         // In-app Bell Notification for Branch Managers and Super Admins
         try {
@@ -181,7 +193,7 @@ class DriverController extends Controller
             }
         }
 
-        return response()->json($driver->load(['branch', 'user', 'deliveries.order']));
+        return response()->json($driver->load(['branch', 'user', 'staff', 'deliveries.order']));
     }
 
     /**
@@ -234,7 +246,7 @@ class DriverController extends Controller
         }
 
         $driver->update($validated);
-        $freshDriver = $driver->load(['branch', 'user']);
+        $freshDriver = $driver->load(['branch', 'user', 'staff']);
 
         // If driver resubmitted info, notify Super Admin and Branch Manager
         if ($isResubmitting && ($freshDriver->kyc_status === 'submitted')) {
@@ -409,6 +421,11 @@ class DriverController extends Controller
             $updateData['is_online'] = true;
             $updateData['status'] = 'available';
             $updateData['reject_reason'] = null;
+
+            // Sync linked staff member status if present
+            if ($driver->staff) {
+                $driver->staff->update(['status' => 'active']);
+            }
         } elseif ($status === 'rejected') {
             $updateData['is_online'] = false;
             $updateData['status'] = 'offline';
@@ -419,7 +436,7 @@ class DriverController extends Controller
         }
 
         $driver->update($updateData);
-        $freshDriver = $driver->fresh(['branch', 'user']);
+        $freshDriver = $driver->fresh(['branch', 'user', 'staff']);
 
         // 1. Send Email to the driver
         $driverEmail = $freshDriver->user?->email;
