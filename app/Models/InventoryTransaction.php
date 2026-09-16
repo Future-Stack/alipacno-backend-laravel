@@ -11,7 +11,7 @@ class InventoryTransaction extends Model
 
     protected $table = 'inventory_transactions';
 
-    protected $fillable = ['inventory_item_id', 'transaction_type', 'quantity', 'notes', 'created_by'];
+    protected $fillable = ['inventory_item_id', 'supplier_id','transaction_type', 'quantity', 'notes', 'created_by'];
 
     public function inventoryItem()
     {
@@ -21,5 +21,10 @@ class InventoryTransaction extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(\App\Models\Supplier::class);
     }
 }

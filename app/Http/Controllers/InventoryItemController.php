@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ManagesInventoryStock;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
+use App\Models\StockConversion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -11,8 +13,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InventoryItemController extends Controller
 {
+    use ManagesInventoryStock;
+
     /**
-     * Display a listing of inventory items.
+     * Display a listing of inventory items. (unchanged)
      */
     public function index(Request $request)
     {
@@ -64,7 +68,7 @@ class InventoryItemController extends Controller
     }
 
     /**
-     * Store a newly created inventory item.
+     * Store a newly created inventory item. (unchanged)
      */
     public function store(Request $request)
     {
@@ -83,15 +87,23 @@ class InventoryItemController extends Controller
     }
 
     /**
-     * Display the specified inventory item.
+     * Display the specified inventory item. (unchanged)
      */
     public function show(InventoryItem $inventoryItem)
     {
-        return response()->json($inventoryItem->load(['branch', 'category', 'madeFromItem', 'transactions']));
+        // FIX (supplier traceability): eager-load transactions.supplier too,
+        // so the item detail response shows which supplier each purchase/
+        // restock came from without an extra request.
+        return response()->json($inventoryItem->load(['branch', 'category', 'madeFromItem', 'transactions.supplier']));
     }
 
     /**
      * Update the specified inventory item.
+     *
+     * FIX: if the request changes `quantity` directly (not via a
+     * transaction/distribute/convert endpoint), we now log an 'adjustment'
+     * InventoryTransaction so the item's history stays complete instead of
+     * silently drifting from the audit trail.
      */
     public function update(Request $request, InventoryItem $inventoryItem)
     {
@@ -105,20 +117,63 @@ class InventoryItemController extends Controller
             $validated['image'] = $request->file('image')->store('inventory_items', 'public');
         }
 
-        $qty = $validated['quantity'] ?? $inventoryItem->quantity;
+        $previousQuantity = (float) $inventoryItem->quantity;
+        $qty = $validated['quantity'] ?? $previousQuantity;
         $minStock = $validated['minimum_stock'] ?? $inventoryItem->minimum_stock;
         $validated['status'] = $this->deriveStatus($qty, $minStock, $validated['status'] ?? null);
 
-        $inventoryItem->update($validated);
+        DB::transaction(function () use ($inventoryItem, $validated, $previousQuantity, $qty, $request) {
+            $inventoryItem->update($validated);
 
-        return response()->json($inventoryItem->load(['branch', 'category', 'madeFromItem']));
+            $diff = round($qty - $previousQuantity, 4);
+            if ($diff !== 0.0) {
+                InventoryTransaction::create([
+                    'inventory_item_id' => $inventoryItem->id,
+                    'transaction_type' => 'adjustment',
+                    'quantity' => abs($diff),
+                    'notes' => $diff > 0
+                        ? 'Manual stock increase via item edit'
+                        : 'Manual stock decrease via item edit',
+                    'created_by' => $request->user()?->id,
+                ]);
+            }
+        });
+
+        return response()->json($inventoryItem->fresh()->load(['branch', 'category', 'madeFromItem']));
     }
 
     /**
      * Remove the specified inventory item.
+     *
+     * FIX: previously deleted unconditionally, which could either violate a
+     * DB foreign-key constraint with a raw 500 error, or leave dangling
+     * references (other items' made_from_item_id, transactions, conversions)
+     * if no constraint existed. Now guarded with a clear 422 message.
      */
     public function destroy(InventoryItem $inventoryItem)
     {
+        $blockers = [];
+
+        if (InventoryItem::where('made_from_item_id', $inventoryItem->id)->exists()) {
+            $blockers[] = 'other items are configured as made from this item';
+        }
+
+        if ($inventoryItem->transactions()->exists()) {
+            $blockers[] = 'it has existing inventory transactions';
+        }
+
+        if (StockConversion::where('inventory_item_id', $inventoryItem->id)
+            ->orWhere('converted_item_id', $inventoryItem->id)
+            ->exists()) {
+            $blockers[] = 'it has existing stock conversions';
+        }
+
+        if (!empty($blockers)) {
+            return response()->json([
+                'message' => 'Cannot delete this inventory item because ' . implode(', and ', $blockers) . '. Reassign or remove those first.',
+            ], 422);
+        }
+
         if ($inventoryItem->image && Storage::disk('public')->exists($inventoryItem->image)) {
             Storage::disk('public')->delete($inventoryItem->image);
         }
@@ -133,6 +188,12 @@ class InventoryItemController extends Controller
 
     /**
      * Dashboard summary cards: total items, low stock, out of stock, total stock value.
+     *
+     * FIX: 'adjustment' used to be treated as always-positive, but distribute()
+     * used to also tag both legs 'adjustment' (one really being a decrease).
+     * distribute() now uses 'transfer_in' / 'transfer_out', and convert() now
+     * logs 'conversion_in' / 'conversion_out' — so this CASE correctly nets
+     * out to zero across branches/conversions instead of over-counting.
      */
     public function summary(Request $request)
     {
@@ -156,9 +217,10 @@ class InventoryItemController extends Controller
         $valueMovedLast7Days = InventoryTransaction::whereIn('inventory_transactions.inventory_item_id', $itemIds)
             ->where('inventory_transactions.created_at', '>=', now()->subDays(7))
             ->join('inventory_items', 'inventory_items.id', '=', 'inventory_transactions.inventory_item_id')
-            ->selectRaw("SUM(CASE WHEN transaction_type IN ('purchase','restock','adjustment') THEN inventory_transactions.quantity * inventory_items.purchase_price
-                         WHEN transaction_type IN ('sale','waste') THEN -inventory_transactions.quantity * inventory_items.purchase_price
-                         ELSE 0 END) as net_value")
+            ->selectRaw("SUM(CASE
+                            WHEN transaction_type IN ('purchase','restock','adjustment','transfer_in','conversion_in') THEN inventory_transactions.quantity * inventory_items.purchase_price
+                            WHEN transaction_type IN ('sale','waste','transfer_out','conversion_out') THEN -inventory_transactions.quantity * inventory_items.purchase_price
+                            ELSE 0 END) as net_value")
             ->value('net_value') ?? 0;
 
         $valueStart = $totalStockValue - $valueMovedLast7Days;
@@ -178,7 +240,10 @@ class InventoryItemController extends Controller
     }
 
     /**
-     * Stock alert / KPI overview analytics for a given period.
+     * Stock alert / KPI overview analytics for a given period. (unchanged logic,
+     * still worth knowing avg_quantity_on_hand is a naive current-snapshot
+     * average rather than a true period average — flagged, not changed here
+     * since it needs a design decision, not just a bugfix.)
      */
     public function analytics(Request $request)
     {
@@ -255,6 +320,9 @@ class InventoryItemController extends Controller
 
     /**
      * Export the (filtered) inventory item list as CSV.
+     *
+     * FIX: now respects `low_stock_only` like index() does — previously the
+     * filter silently had no effect on export.
      */
     public function export(Request $request): StreamedResponse
     {
@@ -274,6 +342,10 @@ class InventoryItemController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->boolean('low_stock_only')) {
+            $query->whereRaw('quantity <= minimum_stock');
         }
 
         if ($request->filled('search')) {
@@ -326,58 +398,82 @@ class InventoryItemController extends Controller
     public function distribute(Request $request, InventoryItem $inventoryItem)
     {
         $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id|different:' . $inventoryItem->branch_id,
+            'branch_id' => 'required|exists:branches,id',
             'quantity' => 'required|numeric|min:0.01',
         ]);
 
-        if ($validated['quantity'] > $inventoryItem->quantity) {
-            return response()->json(['message' => 'Insufficient stock available to distribute.'], 422);
+        if ((int) $validated['branch_id'] === (int) $inventoryItem->branch_id) {
+            return response()->json(['message' => 'Target branch must be different from the item\'s current branch.'], 422);
         }
 
-        $target = DB::transaction(function () use ($inventoryItem, $validated, $request) {
-            $inventoryItem->quantity -= $validated['quantity'];
-            $inventoryItem->status = $this->deriveStatus($inventoryItem->quantity, $inventoryItem->minimum_stock);
-            $inventoryItem->save();
+        try {
+            $result = DB::transaction(function () use ($inventoryItem, $validated, $request) {
+                $source = InventoryItem::where('id', $inventoryItem->id)->lockForUpdate()->firstOrFail();
 
-            $targetItem = InventoryItem::firstOrCreate(
-                ['branch_id' => $validated['branch_id'], 'name' => $inventoryItem->name],
-                [
-                    'category_id' => $inventoryItem->category_id,
-                    'type' => $inventoryItem->type,
-                    'unit' => $inventoryItem->unit,
-                    'purchase_price' => $inventoryItem->purchase_price,
-                    'selling_price' => $inventoryItem->selling_price,
-                    'minimum_stock' => $inventoryItem->minimum_stock,
-                    'quantity' => 0,
-                    'status' => 'out_of_stock',
-                ]
-            );
+                if ($validated['quantity'] > $source->quantity) {
+                    throw new \RuntimeException('Insufficient stock available to distribute.');
+                }
 
-            $targetItem->quantity += $validated['quantity'];
-            $targetItem->status = $this->deriveStatus($targetItem->quantity, $targetItem->minimum_stock);
-            $targetItem->save();
+                $source->quantity -= $validated['quantity'];
+                $source->status = $this->deriveStatus($source->quantity, $source->minimum_stock);
+                $source->save();
 
-            $userId = $request->user()?->id;
-            InventoryTransaction::create([
-                'inventory_item_id' => $inventoryItem->id,
-                'transaction_type' => 'adjustment',
-                'quantity' => $validated['quantity'],
-                'notes' => "Distributed to branch #{$validated['branch_id']}",
-                'created_by' => $userId,
-            ]);
-            InventoryTransaction::create([
-                'inventory_item_id' => $targetItem->id,
-                'transaction_type' => 'adjustment',
-                'quantity' => $validated['quantity'],
-                'notes' => "Received from branch #{$inventoryItem->branch_id}",
-                'created_by' => $userId,
-            ]);
+                $targetItem = InventoryItem::where('branch_id', $validated['branch_id'])
+                    ->where('name', $source->name)
+                    ->lockForUpdate()
+                    ->first();
 
-            return $targetItem;
-        });
+                if (!$targetItem) {
+                    $targetItem = InventoryItem::create([
+                        'branch_id' => $validated['branch_id'],
+                        'category_id' => $source->category_id,
+                        'type' => $source->type,
+                        'name' => $source->name,
+                        'unit' => $source->unit,
+                        'description' => $source->description,
+                        'purchase_price' => $source->purchase_price,
+                        'selling_price' => $source->selling_price,
+                        'minimum_stock' => $source->minimum_stock,
+                        'made_from_item_id' => $source->made_from_item_id,
+                        'pack_size' => $source->pack_size,
+                        'pack_unit' => $source->pack_unit,
+                        'yield_qty' => $source->yield_qty,
+                        'yield_unit' => $source->yield_unit,
+                        'quantity' => 0,
+                        'status' => 'out_of_stock',
+                    ]);
+                }
+
+                $targetItem->quantity += $validated['quantity'];
+                $targetItem->status = $this->deriveStatus($targetItem->quantity, $targetItem->minimum_stock);
+                $targetItem->save();
+
+                $userId = $request->user()?->id;
+                InventoryTransaction::create([
+                    'inventory_item_id' => $source->id,
+                    'transaction_type' => 'transfer_out',
+                    'quantity' => $validated['quantity'],
+                    'notes' => "Distributed to branch #{$validated['branch_id']}",
+                    'created_by' => $userId,
+                ]);
+                InventoryTransaction::create([
+                    'inventory_item_id' => $targetItem->id,
+                    'transaction_type' => 'transfer_in',
+                    'quantity' => $validated['quantity'],
+                    'notes' => "Received from branch #{$source->branch_id}",
+                    'created_by' => $userId,
+                ]);
+
+                return [$source, $targetItem];
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        [$source, $target] = $result;
 
         return response()->json([
-            'source_item' => $inventoryItem->fresh(['branch', 'category']),
+            'source_item' => $source->fresh(['branch', 'category']),
             'target_item' => $target->load(['branch', 'category']),
         ]);
     }
@@ -406,22 +502,5 @@ class InventoryItemController extends Controller
             'yield_qty' => 'nullable|numeric|min:0',
             'yield_unit' => 'nullable|string|max:50',
         ]);
-    }
-
-    private function deriveStatus(float $quantity, float $minimumStock, ?string $explicit = null): string
-    {
-        if ($explicit) {
-            return $explicit;
-        }
-
-        if ($quantity <= 0) {
-            return 'out_of_stock';
-        }
-
-        if ($quantity <= $minimumStock) {
-            return 'low_stock';
-        }
-
-        return 'in_stock';
     }
 }
