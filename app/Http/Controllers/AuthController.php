@@ -500,6 +500,7 @@ class AuthController extends Controller
         $request->validate([
             'login' => 'required|string', // Accepts email or phone
             'password' => 'required|string',
+            'fcm_token' => 'nullable|string',
         ]);
 
         $loginInput = $request->input('login');
@@ -534,6 +535,10 @@ class AuthController extends Controller
 
         // Revoke previous tokens optionally
         $user->tokens()->delete();
+
+        if ($request->filled('fcm_token')) {
+            $user->update(['fcm_token' => $request->fcm_token]);
+        }
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -574,10 +579,27 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $request->user()->update(['fcm_token' => null]);
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'message' => 'Successfully logged out'
+        ]);
+    }
+
+    /**
+     * Update FCM token for the authenticated user.
+     */
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string',
+        ]);
+
+        $request->user()->update(['fcm_token' => $request->fcm_token]);
+
+        return response()->json([
+            'message' => 'FCM token updated successfully',
         ]);
     }
 }
