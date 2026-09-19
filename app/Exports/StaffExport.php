@@ -29,7 +29,7 @@ class StaffExport implements
     public function query(): Builder
     {
         $query = Staff::query()
-            ->with(['branch', 'role']);
+            ->with(['branch', 'role', 'driver']);
 
         // Filter by branch
         if ($this->request->filled('branch_id')) {
@@ -45,6 +45,24 @@ class StaffExport implements
                 'role_id',
                 $this->request->role_id
             );
+        }
+
+        // Filter by driver
+        if ($this->request->has('is_driver')) {
+            $isDriver = $this->request->boolean('is_driver');
+            if ($isDriver) {
+                $query->where(function ($q) {
+                    $q->whereHas('driver')
+                        ->orWhereHas('role', function ($rq) {
+                            $rq->where('name', 'like', '%driver%');
+                        });
+                });
+            } else {
+                $query->whereDoesntHave('driver')
+                    ->whereDoesntHave('role', function ($rq) {
+                        $rq->where('name', 'like', '%driver%');
+                    });
+            }
         }
 
         // Filter by status
@@ -63,7 +81,7 @@ class StaffExport implements
             );
         }
 
-        // Search by employee ID, name, email or phone
+        // Search by employee ID, name, email, phone, license number, or vehicle type
         if ($this->request->filled('search')) {
             $search = $this->request->search;
 
@@ -87,7 +105,11 @@ class StaffExport implements
                     'phone',
                     'like',
                     "%{$search}%"
-                );
+                )
+                ->orWhereHas('driver', function ($dq) use ($search) {
+                    $dq->where('license_number', 'like', "%{$search}%")
+                        ->orWhere('vehicle_type', 'like', "%{$search}%");
+                });
             });
         }
 
@@ -113,6 +135,10 @@ class StaffExport implements
             'Commission (%)',
             'Hire Date',
             'Status',
+            'Is Driver',
+            'Vehicle Type',
+            'License Number',
+            'KYC Status',
         ];
     }
 
@@ -121,6 +147,9 @@ class StaffExport implements
      */
     public function map($staff): array
     {
+        $driver = $staff->driver;
+        $isDriver = (bool) ($driver || ($staff->role && str_contains(strtolower($staff->role->name), 'driver')));
+
         return [
             $staff->employee_id,
             $staff->name,
@@ -135,6 +164,10 @@ class StaffExport implements
             $staff->commission ?? '',
             $staff->hire_date ?? '',
             $staff->status,
+            $isDriver ? 'Yes' : 'No',
+            $driver?->vehicle_type ?? ($isDriver ? 'Motorcycle' : ''),
+            $driver?->license_number ?? '',
+            $driver?->kyc_status ?? '',
         ];
     }
 }

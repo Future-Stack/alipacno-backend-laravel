@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ManagesInventoryStock;
 use App\Models\InventoryItem;
+use App\Models\InventoryTransaction;
 use App\Models\StockConversion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class StockConversionController extends Controller
 {
+    use ManagesInventoryStock;
+
     /**
-     * Display a listing of stock conversions.
+     * Display a listing of stock conversions. (unchanged)
      */
     public function index(Request $request)
     {
@@ -50,8 +54,15 @@ class StockConversionController extends Controller
     }
 
     /**
-     * Store a newly created stock conversion in storage, moving stock from the
-     * source item to the converted item.
+     * Store a newly created stock conversion, moving stock from the source
+     * item to the converted item.
+     *
+     * FIX: the "enough stock?" check used to run BEFORE the DB transaction
+     * against a possibly-stale $sourceItem, then applyStockDelta() used to
+     * silently clamp to 0 instead of failing — so two concurrent requests
+     * could both pass the check and the second would silently under-deduct.
+     * Now the row is locked and the check happens via the trait's
+     * applyStockDelta(), which throws (and rolls back) on insufficient stock.
      */
     public function store(Request $request)
     {
@@ -64,26 +75,24 @@ class StockConversionController extends Controller
 
         $validated['created_by'] = auth()->id();
 
-        $sourceItem = InventoryItem::findOrFail($validated['inventory_item_id']);
+        try {
+            $conversion = DB::transaction(function () use ($validated) {
+                $conversion = StockConversion::create($validated);
 
-        if ($validated['quantity'] > $sourceItem->quantity) {
-            return response()->json(['message' => 'Insufficient stock in source item for this conversion.'], 422);
+                $this->applyStockDelta($validated['inventory_item_id'], -$validated['quantity']);
+                $this->applyStockDelta($validated['converted_item_id'], $validated['quantity']);
+
+                return $conversion;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
-
-        $conversion = DB::transaction(function () use ($validated) {
-            $conversion = StockConversion::create($validated);
-
-            $this->applyStockDelta($validated['inventory_item_id'], -$validated['quantity']);
-            $this->applyStockDelta($validated['converted_item_id'], $validated['quantity']);
-
-            return $conversion;
-        });
 
         return response()->json($conversion->load(['branch', 'inventoryItem', 'convertedItem', 'creator']), 201);
     }
 
     /**
-     * Display the specified stock conversion.
+     * Display the specified stock conversion. (unchanged)
      */
     public function show(StockConversion $stockConversion)
     {
@@ -91,8 +100,15 @@ class StockConversionController extends Controller
     }
 
     /**
-     * Update the specified stock conversion in storage, reconciling the stock
-     * impact of the previous values before applying the new ones.
+     * Update the specified stock conversion, reconciling the stock impact of
+     * the previous values before applying the new ones.
+     *
+     * FIX: previously had NO sufficiency check on the new quantity/items —
+     * it reversed the old effect then applied the new delta straight through
+     * applyStockDelta()'s old max(0, ...) clamp, so an over-large edit would
+     * silently zero out a source item instead of being rejected. Now every
+     * delta (reversal AND re-application) goes through the trait, which
+     * throws on insufficient stock and rolls the whole edit back.
      */
     public function update(Request $request, StockConversion $stockConversion)
     {
@@ -107,32 +123,43 @@ class StockConversionController extends Controller
         $newTargetId = $validated['converted_item_id'] ?? $stockConversion->converted_item_id;
         $newQuantity = $validated['quantity'] ?? $stockConversion->quantity;
 
-        DB::transaction(function () use ($stockConversion, $validated, $newSourceId, $newTargetId, $newQuantity) {
-            // Reverse the previous conversion's effect on stock.
-            $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
-            $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
+        try {
+            DB::transaction(function () use ($stockConversion, $validated, $newSourceId, $newTargetId, $newQuantity) {
+                // Reverse the previous conversion's effect on stock.
+                $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
+                $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
 
-            // Apply the new conversion's effect on stock.
-            $this->applyStockDelta($newSourceId, -$newQuantity);
-            $this->applyStockDelta($newTargetId, $newQuantity);
+                // Apply the new conversion's effect on stock. If the source
+                // doesn't have enough after the reversal above, this throws
+                // and the whole transaction (including the reversal) rolls back.
+                $this->applyStockDelta($newSourceId, -$newQuantity);
+                $this->applyStockDelta($newTargetId, $newQuantity);
 
-            $stockConversion->update($validated);
-        });
+                $stockConversion->update($validated);
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
-        return response()->json($stockConversion->load(['branch', 'inventoryItem', 'convertedItem', 'creator']));
+        return response()->json($stockConversion->fresh()->load(['branch', 'inventoryItem', 'convertedItem', 'creator']));
     }
 
     /**
-     * Remove the specified stock conversion from storage, reversing its stock impact.
+     * Remove the specified stock conversion, reversing its stock impact.
+     * (Same trait-based delta, now also throws/422s instead of clamping.)
      */
     public function destroy(StockConversion $stockConversion)
     {
-        DB::transaction(function () use ($stockConversion) {
-            $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
-            $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
+        try {
+            DB::transaction(function () use ($stockConversion) {
+                $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
+                $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
 
-            $stockConversion->delete();
-        });
+                $stockConversion->delete();
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'status' => true,
@@ -141,8 +168,8 @@ class StockConversionController extends Controller
     }
 
     /**
-     * Calculate conversion estimate between inventory items, using the target
-     * item's stored conversion ratio (pack_size -> yield_qty) when available.
+     * Calculate conversion estimate between inventory items. (unchanged —
+     * read-only, no stock is touched.)
      */
     public function calculate(Request $request)
     {
@@ -183,8 +210,18 @@ class StockConversionController extends Controller
     }
 
     /**
-     * Convert whole "packs" of a raw material into its prepared item, using the
-     * prepared item's own stored conversion ratio (pack_size -> yield_qty).
+     * Convert whole "packs" of a raw material into its prepared item.
+     *
+     * FIXES:
+     *  - now locks the raw item row and wraps the check + StockConversion
+     *    create + both stock deltas in one DB transaction (previously the
+     *    sufficiency check ran outside any lock/transaction — same race
+     *    condition as store() had).
+     *  - now ALSO writes two InventoryTransaction rows ('conversion_out' on
+     *    the raw item, 'conversion_in' on the prepared item). Previously
+     *    convert() only wrote a StockConversion row, so summary()/analytics()
+     *    — which read from inventory_transactions — never saw conversions at
+     *    all, undercounting consumption/turnover.
      */
     public function convert(Request $request)
     {
@@ -199,27 +236,44 @@ class StockConversionController extends Controller
             return response()->json(['message' => 'This item has no conversion ratio configured (made from / pack size / yield).'], 422);
         }
 
-        $rawItem = InventoryItem::findOrFail($preparedItem->made_from_item_id);
         $yield = $preparedItem->conversionYieldFor((float) $validated['packs']);
 
-        if ($yield['raw_consumed'] > $rawItem->quantity) {
-            return response()->json(['message' => 'Insufficient raw material stock for this conversion.'], 422);
+        try {
+            [$conversion, $rawItem] = DB::transaction(function () use ($preparedItem, $yield) {
+                $rawItem = InventoryItem::where('id', $preparedItem->made_from_item_id)->lockForUpdate()->firstOrFail();
+
+                $conversion = StockConversion::create([
+                    'branch_id' => $rawItem->branch_id,
+                    'inventory_item_id' => $rawItem->id,
+                    'converted_item_id' => $preparedItem->id,
+                    'quantity' => $yield['raw_consumed'],
+                    'created_by' => auth()->id(),
+                ]);
+
+                $this->applyStockDelta($rawItem->id, -$yield['raw_consumed']);
+                $this->applyStockDelta($preparedItem->id, $yield['yield_produced']);
+
+                $userId = auth()->id();
+                InventoryTransaction::create([
+                    'inventory_item_id' => $rawItem->id,
+                    'transaction_type' => 'conversion_out',
+                    'quantity' => $yield['raw_consumed'],
+                    'notes' => "Converted into {$preparedItem->name}",
+                    'created_by' => $userId,
+                ]);
+                InventoryTransaction::create([
+                    'inventory_item_id' => $preparedItem->id,
+                    'transaction_type' => 'conversion_in',
+                    'quantity' => $yield['yield_produced'],
+                    'notes' => "Produced from {$rawItem->name}",
+                    'created_by' => $userId,
+                ]);
+
+                return [$conversion, $rawItem];
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
-
-        $conversion = DB::transaction(function () use ($rawItem, $preparedItem, $yield) {
-            $conversion = StockConversion::create([
-                'branch_id' => $rawItem->branch_id,
-                'inventory_item_id' => $rawItem->id,
-                'converted_item_id' => $preparedItem->id,
-                'quantity' => $yield['raw_consumed'],
-                'created_by' => auth()->id(),
-            ]);
-
-            $this->applyStockDelta($rawItem->id, -$yield['raw_consumed']);
-            $this->applyStockDelta($preparedItem->id, $yield['yield_produced']);
-
-            return $conversion;
-        });
 
         return response()->json([
             'conversion' => $conversion->load(['branch', 'inventoryItem', 'convertedItem']),
@@ -228,21 +282,5 @@ class StockConversionController extends Controller
             'yield_produced' => $yield['yield_produced'],
             'yield_unit' => $yield['yield_unit'],
         ]);
-    }
-
-    private function applyStockDelta(int $inventoryItemId, float $delta): void
-    {
-        $item = InventoryItem::findOrFail($inventoryItemId);
-        $item->quantity = max(0, $item->quantity + $delta);
-
-        if ($item->quantity <= 0) {
-            $item->status = 'out_of_stock';
-        } elseif ($item->quantity <= $item->minimum_stock) {
-            $item->status = 'low_stock';
-        } else {
-            $item->status = 'in_stock';
-        }
-
-        $item->save();
     }
 }

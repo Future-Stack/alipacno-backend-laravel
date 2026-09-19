@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Staff;
+use App\Models\Driver;
+use App\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -21,7 +23,7 @@ class StaffController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Staff::with(['branch', 'role']);
+        $query = Staff::with(['branch', 'role', 'driver', 'user']);
 
         // Filter by branch
         if ($request->filled('branch_id')) {
@@ -31,6 +33,38 @@ class StaffController extends Controller
         // Filter by role
         if ($request->filled('role_id')) {
             $query->where('role_id', $request->role_id);
+        }
+
+        // Filter by driver status / is_driver
+        if ($request->has('is_driver')) {
+            $isDriver = $request->boolean('is_driver');
+            if ($isDriver) {
+                $query->where(function ($q) {
+                    $q->whereHas('driver')
+                        ->orWhereHas('role', function ($rq) {
+                            $rq->where('name', 'like', '%driver%');
+                        });
+                });
+            } else {
+                $query->whereDoesntHave('driver')
+                    ->whereDoesntHave('role', function ($rq) {
+                        $rq->where('name', 'like', '%driver%');
+                    });
+            }
+        }
+
+        // Filter by driver KYC status
+        if ($request->filled('kyc_status')) {
+            $query->whereHas('driver', function ($q) use ($request) {
+                $q->where('kyc_status', $request->kyc_status);
+            });
+        }
+
+        // Filter by vehicle type
+        if ($request->filled('vehicle_type')) {
+            $query->whereHas('driver', function ($q) use ($request) {
+                $q->where('vehicle_type', $request->vehicle_type);
+            });
         }
 
         // Filter by status
@@ -43,7 +77,7 @@ class StaffController extends Controller
             $query->where('shift', $request->shift);
         }
 
-        // Search by employee ID, name, email or phone
+        // Search by employee ID, name, email, phone, license number, or vehicle type
         if ($request->filled('search')) {
             $search = $request->search;
 
@@ -51,7 +85,11 @@ class StaffController extends Controller
                 $q->where('employee_id', 'like', "%{$search}%")
                     ->orWhere('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhereHas('driver', function ($dq) use ($search) {
+                        $dq->where('license_number', 'like', "%{$search}%")
+                            ->orWhere('vehicle_type', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -158,7 +196,33 @@ class StaffController extends Controller
             'password' => [
                 'nullable',
                 'string',
-                'min:8', // User login-er jonno password (optional rakha jay)
+                'min:8', // User login password (optional, defaults to 12345678)
+            ],
+            // Driver specific options in Staff Management:
+            'is_driver' => [
+                'nullable',
+                'boolean',
+            ],
+            'vehicle_type' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'license_number' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'license_image' => [
+                'nullable',
+                'file',
+                'mimes:jpeg,png,jpg,webp,pdf',
+                'max:10240',
+            ],
+            'kyc_status' => [
+                'nullable',
+                'string',
+                Rule::in(['pending', 'submitted', 'approved', 'rejected']),
             ],
         ]);
 
@@ -168,6 +232,24 @@ class StaffController extends Controller
             $validated['time_out'] ?? null
         );
 
+        // Determine if this staff member is a Driver
+        $isDriver = $request->boolean('is_driver');
+        $driverRole = null;
+
+        if (!empty($validated['role_id'])) {
+            $selectedRole = Role::find($validated['role_id']);
+            if ($selectedRole && str_contains(strtolower($selectedRole->name), 'driver')) {
+                $isDriver = true;
+                $driverRole = $selectedRole;
+            }
+        } elseif ($isDriver || !empty($validated['vehicle_type']) || !empty($validated['license_number'])) {
+            $isDriver = true;
+            $driverRole = Role::where('name', 'like', '%driver%')->first();
+            if ($driverRole) {
+                $validated['role_id'] = $driverRole->id;
+            }
+        }
+
         // Upload staff image
         $imagePath = null;
         if ($request->hasFile('image')) {
@@ -175,34 +257,69 @@ class StaffController extends Controller
             $validated['image'] = $imagePath;
         }
 
-        // Database Transaction shuru
-        $staff = DB::transaction(function () use ($validated, $imagePath) {
+        // Upload driver license image if present
+        $licenseImagePath = null;
+        if ($request->hasFile('license_image')) {
+            $licenseImagePath = $request->file('license_image')->store('drivers/licenses', 'public');
+        }
+
+        // Database Transaction
+        $staff = DB::transaction(function () use ($validated, $imagePath, $licenseImagePath, $isDriver) {
 
             // 1. Create User
             $user = User::create([
                 'name'      => $validated['name'],
                 'email'     => $validated['email'],
                 'phone'     => $validated['phone'],
-                'password'  => Hash::make($validated['password'] ?? '12345678'), // Default password or input password
-                'user_type' => 'staff', // Athoba apnar system er specific user_type (e.g., 'staff')
+                'password'  => Hash::make($validated['password'] ?? '12345678'),
+                'user_type' => $isDriver ? 'driver' : 'staff',
                 'role_id'   => $validated['role_id'] ?? null,
                 'avatar'    => $imagePath,
                 'status'    => $validated['status'] ?? 'active',
-                'email_verified_at' => now()
+                'email_verified_at' => now(),
             ]);
 
             $validated['user_id'] = $user->id;
 
+            // Extract staff columns
+            $staffData = collect($validated)->except([
+                'is_driver',
+                'vehicle_type',
+                'license_number',
+                'license_image',
+                'kyc_status',
+                'password',
+            ])->toArray();
+
             // 2. Create Staff
-            $staff = Staff::create($validated);
+            $staff = Staff::create($staffData);
+
+            // 3. Create Driver record if staff is a Driver
+            if ($isDriver) {
+                Driver::create([
+                    'user_id'        => $user->id,
+                    'staff_id'       => $staff->id,
+                    'branch_id'      => $validated['branch_id'],
+                    'name'           => $validated['name'],
+                    'phone'          => $validated['phone'],
+                    'vehicle_type'   => $validated['vehicle_type'] ?? 'Motorcycle',
+                    'hourly_rate'    => 0.00,
+                    'license_number' => $validated['license_number'] ?? null,
+                    'license_image'  => $licenseImagePath,
+                    'kyc_status'     => 'approved',
+                    'reject_reason'  => null,
+                    'is_online'      => true,
+                    'status'         => 'available',
+                ]);
+            }
 
             return $staff;
         });
 
-        $staff->load(['branch', 'role']);
+        $staff->load(['branch', 'role', 'driver', 'user']);
 
         return response()->json([
-            'message' => 'Staff and user account created successfully.',
+            'message' => $isDriver ? 'Driver staff and user account created successfully.' : 'Staff and user account created successfully.',
             'data'    => $staff,
         ], 201);
     }
@@ -216,6 +333,8 @@ class StaffController extends Controller
             'branch',
             'role',
             'attendances',
+            'driver',
+            'user',
         ]);
 
         return response()->json([
@@ -323,6 +442,32 @@ class StaffController extends Controller
                     'absent',
                 ]),
             ],
+            // Driver specific options in Staff Management:
+            'is_driver' => [
+                'nullable',
+                'boolean',
+            ],
+            'vehicle_type' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'license_number' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'license_image' => [
+                'nullable',
+                'file',
+                'mimes:jpeg,png,jpg,webp,pdf',
+                'max:10240',
+            ],
+            'kyc_status' => [
+                'nullable',
+                'string',
+                Rule::in(['pending', 'submitted', 'approved', 'rejected']),
+            ],
         ]);
 
         // Get final time values
@@ -346,10 +491,101 @@ class StaffController extends Controller
                 ->store('staff', 'public');
         }
 
-        $staff->update($validated);
+        // Handle license image upload if provided
+        $licenseImagePath = null;
+        if ($request->hasFile('license_image')) {
+            $licenseImagePath = $request->file('license_image')->store('drivers/licenses', 'public');
+        }
+
+        DB::transaction(function () use ($request, $validated, $staff, $licenseImagePath) {
+            // Find or determine driver state
+            $driver = $staff->driver ?? Driver::where('user_id', $staff->user_id)->first();
+            $roleId = $validated['role_id'] ?? $staff->role_id;
+            $role = $roleId ? Role::find($roleId) : null;
+            $isDriverRole = $role && str_contains(strtolower($role->name), 'driver');
+
+            $isDriver = $request->has('is_driver')
+                ? $request->boolean('is_driver')
+                : ($isDriverRole || (bool) $driver || !empty($validated['license_number']) || !empty($validated['vehicle_type']));
+
+            // Update associated User
+            if ($staff->user_id) {
+                $user = User::find($staff->user_id);
+                if ($user) {
+                    $userUpdates = [];
+                    if (isset($validated['name'])) $userUpdates['name'] = $validated['name'];
+                    if (isset($validated['email'])) $userUpdates['email'] = $validated['email'];
+                    if (isset($validated['phone'])) $userUpdates['phone'] = $validated['phone'];
+                    if (isset($validated['role_id'])) $userUpdates['role_id'] = $validated['role_id'];
+                    if (isset($validated['status'])) $userUpdates['status'] = $validated['status'];
+                    if (isset($validated['image'])) $userUpdates['avatar'] = $validated['image'];
+
+                    if ($isDriver && $user->user_type !== 'driver') {
+                        $userUpdates['user_type'] = 'driver';
+                    } elseif (!$isDriver && $user->user_type === 'driver' && $request->has('is_driver') && !$request->boolean('is_driver')) {
+                        $userUpdates['user_type'] = 'staff';
+                    }
+
+                    if (!empty($userUpdates)) {
+                        $user->update($userUpdates);
+                    }
+                }
+            }
+
+            // Update or create Driver record
+            if ($isDriver) {
+                $driverData = [
+                    'user_id' => $staff->user_id,
+                    'staff_id' => $staff->id,
+                    'branch_id' => $validated['branch_id'] ?? $staff->branch_id,
+                    'name' => $validated['name'] ?? $staff->name,
+                    'phone' => $validated['phone'] ?? $staff->phone,
+                ];
+
+                if (isset($validated['vehicle_type'])) {
+                    $driverData['vehicle_type'] = $validated['vehicle_type'];
+                }
+                if (isset($validated['license_number'])) {
+                    $driverData['license_number'] = $validated['license_number'];
+                }
+                if ($licenseImagePath) {
+                    if ($driver && $driver->license_image) {
+                        Storage::disk('public')->delete($driver->license_image);
+                    }
+                    $driverData['license_image'] = $licenseImagePath;
+                }
+                if (isset($validated['kyc_status'])) {
+                    $driverData['kyc_status'] = $validated['kyc_status'];
+                }
+                if ($driver) {
+                    $driver->update($driverData);
+                } else {
+                    $driverData['vehicle_type'] = $validated['vehicle_type'] ?? 'Motorcycle';
+                    $driverData['kyc_status'] = $validated['kyc_status'] ?? 'approved';
+                    $driverData['hourly_rate'] = 0.00;
+                    $driverData['is_online'] = true;
+                    $driverData['status'] = 'available';
+                    Driver::create($driverData);
+                }
+            } elseif ($request->has('is_driver') && !$request->boolean('is_driver') && $driver) {
+                // If explicitly deselected driver option
+                $driver->delete();
+            }
+
+            // Extract staff columns and update
+            $staffData = collect($validated)->except([
+                'is_driver',
+                'vehicle_type',
+                'license_number',
+                'license_image',
+                'kyc_status',
+            ])->toArray();
+
+            $staff->update($staffData);
+        });
 
         $staff->refresh();
-        $staff->load(['branch', 'role']);
+        $staff->load(['branch', 'role', 'driver', 'user']);
 
         return response()->json([
             'message' => 'Staff updated successfully.',
@@ -362,8 +598,22 @@ class StaffController extends Controller
      */
     public function destroy(Staff $staff)
     {
-        // Soft delete
-        $staff->delete();
+        DB::transaction(function () use ($staff) {
+            // Delete linked driver record if exists
+            if ($staff->driver) {
+                $staff->driver->delete();
+            } elseif ($staff->user_id) {
+                Driver::where('user_id', $staff->user_id)->delete();
+            }
+
+            // Soft delete linked user if exists
+            if ($staff->user) {
+                $staff->user->delete();
+            }
+
+            // Soft delete staff
+            $staff->delete();
+        });
 
         return response()->json([
             'message' => 'Staff deleted successfully.',
@@ -699,14 +949,18 @@ public function overview(Request $request)
 |--------------------------------------------------------------------------
 */
 
-$availableRiders = Staff::whereHas('role', function ($query) {
-    $query->where('name', 'Delivery Driver');
+$availableRiders = Staff::where(function ($q) {
+    $q->whereHas('role', function ($query) {
+        $query->where('name', 'like', '%driver%');
+    })->orWhereHas('driver');
 })
     ->where('status', 'active')
     ->count();
 
-$previousAvailableRiders = Staff::whereHas('role', function ($query) {
-    $query->where('name', 'Delivery Driver');
+$previousAvailableRiders = Staff::where(function ($q) {
+    $q->whereHas('role', function ($query) {
+        $query->where('name', 'like', '%driver%');
+    })->orWhereHas('driver');
 })
     ->where('status', 'active')
     ->where('hire_date', '<=', $previousEnd->toDateString())

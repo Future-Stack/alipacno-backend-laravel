@@ -14,6 +14,7 @@ class Driver extends Model
 
     protected $fillable = [
         'user_id',
+        'staff_id',
         'branch_id',
         'name',
         'phone',
@@ -52,6 +53,11 @@ class Driver extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function staff()
+    {
+        return $this->belongsTo(Staff::class, 'staff_id');
     }
 
     public function branch()

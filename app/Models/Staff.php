@@ -27,6 +27,8 @@ class Staff extends Model
         'time_in',
         'time_out',
         'salary',
+        'salary_type',
+        'hourly_rate',
         'commission',
         'hire_date',
         'status',
@@ -37,6 +39,7 @@ class Staff extends Model
     protected $appends = [
         'hours_worked',
         'image_url',
+        'is_driver',
     ];
 
     protected $casts = [
@@ -135,5 +138,31 @@ class Staff extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Driver relationship (linked by staff_id or user_id fallback).
+     */
+    public function driver()
+    {
+        return $this->hasOne(Driver::class, 'staff_id');
+    }
+
+    /**
+     * Check whether this staff member is a Driver.
+     */
+    protected function isDriver(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                if ($this->relationLoaded('driver')) {
+                    return (bool) $this->driver;
+                }
+                if ($this->relationLoaded('role') && $this->role && str_contains(strtolower($this->role->name), 'driver')) {
+                    return true;
+                }
+                return $this->driver()->exists();
+            }
+        );
     }
 }
