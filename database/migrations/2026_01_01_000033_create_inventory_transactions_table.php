@@ -14,6 +14,10 @@ return new class extends Migration
         Schema::create('inventory_transactions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('inventory_item_id');
+            $table->foreignId('supplier_id')
+                ->nullable()
+                ->constrained('suppliers')
+                ->nullOnDelete();
             $table->enum('transaction_type', ['purchase', 'sale', 'waste', 'adjustment', 'restock'])->default('purchase');
             $table->decimal('quantity', 10, 2);
             $table->text('notes')->nullable();
