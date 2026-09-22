@@ -1,0 +1,982 @@
+{
+  "title": "Pacinos Inventory Management API - Complete Payloads & Endpoints",
+  "base_url": "http://127.0.0.1:8000/api/v1",
+  "auth_header": "Authorization: Bearer <your_token>",
+  "modules": [
+    {
+      "module_name": "0. Authentication",
+      "description": "Get access token to authenticate all inventory requests.",
+      "endpoints": [
+        {
+          "name": "Login as HQ Admin (Auto-Sets Token)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/auth/login",
+          "description": "Logs in as HQ Administrator and automatically stores the Bearer token in collectionVariables.",
+          "headers": [
+            "Accept: application/json",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "email": "hqadmin@restaurant.com",
+            "password": "password123"
+          }
+        },
+        {
+          "name": "Get Current User (/me)",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/auth/me",
+          "description": "Verify current authenticated session and user permissions.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "1. Inventory Categories",
+      "description": "Classification of inventory items (e.g. Meat & Poultry, Dairy, Produce, Packaging).",
+      "endpoints": [
+        {
+          "name": "List Inventory Categories",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-categories?branch_id={{branch_id}}&status=active&search=&all=false&per_page=15",
+          "description": "Returns paginated categories list with branch and items count.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "status",
+              "default_value": "active",
+              "description": "Filter by status: active, inactive"
+            },
+            {
+              "name": "search",
+              "default_value": "",
+              "description": "Search category name"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Return unpaginated list if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Items per page"
+            }
+          ]
+        },
+        {
+          "name": "Create Inventory Category",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-categories",
+          "description": "Creates a new category for a branch and auto-sets inventory_category_id.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 1,
+            "name": "Raw Meat & Poultry",
+            "description": "Fresh beef, poultry and meat cuts",
+            "status": "active"
+          }
+        },
+        {
+          "name": "Get Inventory Category Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+          "description": "Returns category with its associated branch and items.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Inventory Category",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+          "description": "Updates an existing category.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "name": "Raw Meat & Poultry (Updated)",
+            "description": "Fresh prime cuts and poultry",
+            "status": "active"
+          }
+        },
+        {
+          "name": "Delete Inventory Category",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/inventory-categories/{{inventory_category_id}}",
+          "description": "Safely deletes category. Returns 422 if category contains existing items.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "2. Suppliers Management",
+      "description": "Manage vendors and suppliers providing raw materials and goods.",
+      "endpoints": [
+        {
+          "name": "List Suppliers",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/suppliers?branch_id={{branch_id}}&search=&sort_by=name&sort_direction=asc&all=false&per_page=15",
+          "description": "Lists suppliers with their branch details.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "search",
+              "default_value": "",
+              "description": "Search supplier name/email/phone"
+            },
+            {
+              "name": "sort_by",
+              "default_value": "name",
+              "description": "Sort by: id, name, email, phone, created_at"
+            },
+            {
+              "name": "sort_direction",
+              "default_value": "asc",
+              "description": "asc or desc"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Unpaginated if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Pagination per page"
+            }
+          ]
+        },
+        {
+          "name": "Create Supplier",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/suppliers",
+          "description": "Creates a new supplier and auto-captures supplier_id.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 1,
+            "name": "Prime Wholesale Meats Ltd",
+            "phone": "+44 20 7946 0958",
+            "email": "orders@primemeats.example.com",
+            "address": "Unit 4, Smithfield Wholesale Market, London"
+          }
+        },
+        {
+          "name": "Get Supplier Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+          "description": "Returns detailed supplier info.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Supplier",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+          "description": "Updates supplier contact details.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "phone": "+44 20 7946 9999",
+            "address": "Unit 5, Smithfield Wholesale Market, London"
+          }
+        },
+        {
+          "name": "Delete Supplier",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/suppliers/{{supplier_id}}",
+          "description": "Deletes supplier. Returns 204 No Content on success.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "3. Inventory Items & Stock",
+      "description": "Raw materials and prepared stock items, yield ratios, CSV export, analytics, and branch distribution.",
+      "endpoints": [
+        {
+          "name": "List Inventory Items",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-items?branch_id={{branch_id}}&category_id={{inventory_category_id}}&type=raw_material&status=low_stock&low_stock_only=false&search=&sort_by=created_at&sort_direction=desc&all=false&per_page=15",
+          "description": "Returns paginated inventory items with branch, category, and madeFromItem relationship.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "category_id",
+              "default_value": "{{inventory_category_id}}",
+              "description": "Filter by category"
+            },
+            {
+              "name": "type",
+              "default_value": "raw_material",
+              "description": "raw_material or prepared"
+            },
+            {
+              "name": "status",
+              "default_value": "low_stock",
+              "description": "in_stock, low_stock, out_of_stock"
+            },
+            {
+              "name": "low_stock_only",
+              "default_value": "false",
+              "description": "quantity <= minimum_stock filter"
+            },
+            {
+              "name": "search",
+              "default_value": "",
+              "description": "Search name or SKU"
+            },
+            {
+              "name": "sort_by",
+              "default_value": "created_at",
+              "description": "id, name, quantity, created_at"
+            },
+            {
+              "name": "sort_direction",
+              "default_value": "desc",
+              "description": "asc or desc"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Unpaginated if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Per page"
+            }
+          ]
+        },
+        {
+          "name": "Create Raw Material Item (e.g. Minced Beef)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-items",
+          "description": "Creates raw material item and auto-saves inventory_item_id.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 1,
+            "category_id": 1,
+            "type": "raw_material",
+            "name": "Minced Beef 80/20",
+            "sku": "RM-BEEF-001",
+            "quantity": 100,
+            "minimum_stock": 15,
+            "unit": "kg",
+            "description": "Fresh premium minced beef 80/20 blend",
+            "purchase_price": 5.5,
+            "selling_price": null
+          }
+        },
+        {
+          "name": "Create Prepared Item with Conversion Ratio (e.g. Burger Patties)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-items",
+          "description": "Creates prepared item with conversion configuration (made_from_item_id, pack_size, yield_qty) so /calculate and /convert work immediately.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 1,
+            "category_id": 1,
+            "type": "prepared",
+            "name": "Burger Patties (150g)",
+            "sku": "PR-PATTY-150G",
+            "quantity": 0,
+            "minimum_stock": 20,
+            "unit": "pcs",
+            "description": "Formed beef patties prepared from raw minced beef",
+            "purchase_price": 0.85,
+            "selling_price": 2.5,
+            "made_from_item_id": 1,
+            "pack_size": 1.5,
+            "pack_unit": "kg",
+            "yield_qty": 10,
+            "yield_unit": "pcs"
+          }
+        },
+        {
+          "name": "Create Item with Image (multipart/form-data)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-items",
+          "description": "Creates item with photo attachment via multipart/form-data.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "body_formdata": [
+            {
+              "key": "branch_id",
+              "value": "1",
+              "type": "text"
+            },
+            {
+              "key": "category_id",
+              "value": "1",
+              "type": "text"
+            },
+            {
+              "key": "type",
+              "value": "raw_material",
+              "type": "text"
+            },
+            {
+              "key": "name",
+              "value": "Organic Chicken Breast",
+              "type": "text"
+            },
+            {
+              "key": "sku",
+              "value": "RM-CHICK-002",
+              "type": "text"
+            },
+            {
+              "key": "quantity",
+              "value": "50",
+              "type": "text"
+            },
+            {
+              "key": "minimum_stock",
+              "value": "10",
+              "type": "text"
+            },
+            {
+              "key": "unit",
+              "value": "kg",
+              "type": "text"
+            },
+            {
+              "key": "purchase_price",
+              "value": "6.20",
+              "type": "text"
+            },
+            {
+              "key": "image",
+              "type": "file",
+              "src": "",
+              "description": "Select JPEG/PNG image file"
+            }
+          ]
+        },
+        {
+          "name": "Get Inventory Item Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+          "description": "Returns item details including category, branch, madeFromItem and transaction supplier history.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Inventory Item (Auto-logs Adjustment if qty changes)",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+          "description": "Updates item attributes. If quantity changes, controller automatically logs an adjustment transaction to keep audit trails accurate.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "name": "Minced Beef 80/20 (Grain Fed)",
+            "quantity": 110,
+            "minimum_stock": 20,
+            "purchase_price": 5.75
+          }
+        },
+        {
+          "name": "Dashboard Summary KPIs",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/summary?branch_id={{branch_id}}",
+          "description": "Returns total items, low stock alerts, out of stock count, total branches, and total stock valuation with 7-day movement percentage.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            }
+          ]
+        },
+        {
+          "name": "Stock Alert & Turnover Analytics",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/analytics?branch_id={{branch_id}}&period=week",
+          "description": "Calculates inventory turnover ratio, daily consumption value, top-selling product from stock, and damaged/wasted items.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "period",
+              "default_value": "week",
+              "description": "today, week, month, year"
+            }
+          ]
+        },
+        {
+          "name": "Export Inventory Items CSV",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/export?branch_id={{branch_id}}&low_stock_only=false",
+          "description": "Streams a downloadable CSV file (inventory-items.csv) containing all stock information.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "low_stock_only",
+              "default_value": "false",
+              "description": "Filter low stock only"
+            }
+          ]
+        },
+        {
+          "name": "Distribute Item To Another Branch",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}/distribute",
+          "description": "Safely moves stock from the current branch to branch #2. Auto-creates item in target branch if not exists, and logs transfer_out and transfer_in audit records.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 2,
+            "quantity": 15
+          }
+        },
+        {
+          "name": "Delete Inventory Item",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/inventory-items/{{inventory_item_id}}",
+          "description": "Deletes item if no dependent recipes, transactions or conversions exist (otherwise returns clear 422 blocker message).",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "4. Inventory Transactions (Stock Movement & Auditing)",
+      "description": "Fully audited stock movements. Increases/decreases stock atomically with DB row lock.",
+      "endpoints": [
+        {
+          "name": "List Inventory Transactions",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions?branch_id={{branch_id}}&inventory_item_id={{inventory_item_id}}&transaction_type=purchase&supplier_id={{supplier_id}}&all=false&per_page=15",
+          "description": "Returns paginated audit log of stock movements with creator and supplier details.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "inventory_item_id",
+              "default_value": "{{inventory_item_id}}",
+              "description": "Filter by item"
+            },
+            {
+              "name": "transaction_type",
+              "default_value": "purchase",
+              "description": "purchase, sale, waste, adjustment, restock, transfer_in, transfer_out, conversion_in, conversion_out"
+            },
+            {
+              "name": "supplier_id",
+              "default_value": "{{supplier_id}}",
+              "description": "Filter by supplier"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Unpaginated if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Per page"
+            }
+          ]
+        },
+        {
+          "name": "1. Record Stock Purchase (with Supplier)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Records stock purchase, links vendor supplier_id, increases item quantity, and updates item status.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "purchase",
+            "quantity": 50,
+            "supplier_id": 1,
+            "notes": "Weekly delivery batch #PO-9842"
+          }
+        },
+        {
+          "name": "2. Record Restock (with Supplier)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Increases stock under restock transaction type.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "restock",
+            "quantity": 25,
+            "supplier_id": 1,
+            "notes": "Mid-week emergency stock replenishment"
+          }
+        },
+        {
+          "name": "3. Record Sale / Kitchen Consumption",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Deducts stock for sales. Rejects with 422 if stock is insufficient.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "sale",
+            "quantity": 10,
+            "notes": "Batch kitchen sales deduction"
+          }
+        },
+        {
+          "name": "4. Record Waste / Spoilage",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Deducts stock for waste/spoilage and records audit log.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "waste",
+            "quantity": 2,
+            "notes": "Expired / spoiled in cold room"
+          }
+        },
+        {
+          "name": "5. Stock Adjustment (+Increase)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Increases stock on manual count adjustment.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "adjustment",
+            "adjustment_type": "increase",
+            "quantity": 5,
+            "notes": "Physical inventory recount found 5 extra units"
+          }
+        },
+        {
+          "name": "6. Stock Adjustment (-Decrease)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions",
+          "description": "Decreases stock on manual count adjustment.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "transaction_type": "adjustment",
+            "adjustment_type": "decrease",
+            "quantity": 3,
+            "notes": "Physical inventory recount missing 3 units"
+          }
+        },
+        {
+          "name": "Get Inventory Transaction Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+          "description": "Returns transaction details with branch, creator, and supplier info.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Transaction Notes",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+          "description": "Quantity and type are immutable to preserve audit integrity; only notes can be updated.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "notes": "Audit verified and approved note update"
+          }
+        },
+        {
+          "name": "Delete Transaction (Reverses Stock Effect)",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/inventory-transactions/{{inventory_transaction_id}}",
+          "description": "Deletes transaction and cleanly reverses its effect on stock inside a locked DB transaction.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "5. Stock Conversions (Raw -> Prepared)",
+      "description": "Transform raw materials into prepared food items (e.g. Minced Beef -> Burger Patties) with live yield preview and batch conversion.",
+      "endpoints": [
+        {
+          "name": "List Stock Conversions",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions?branch_id={{branch_id}}&inventory_item_id={{inventory_item_id}}&converted_item_id={{prepared_item_id}}&all=false&per_page=15",
+          "description": "Lists conversion logs with source/target items, branch and user info.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "inventory_item_id",
+              "default_value": "{{inventory_item_id}}",
+              "description": "Source raw item"
+            },
+            {
+              "name": "converted_item_id",
+              "default_value": "{{prepared_item_id}}",
+              "description": "Target prepared item"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Unpaginated if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Per page"
+            }
+          ]
+        },
+        {
+          "name": "1. Preview Conversion Yield Live (/calculate)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions/calculate",
+          "description": "Read-only simulation. Calculates how many prepared items will be produced from raw material quantity without altering stock.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "converted_item_id": 2,
+            "quantity": 3
+          }
+        },
+        {
+          "name": "2. Convert Whole Packs into Prepared Item (/convert)",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions/convert",
+          "description": "Converts whole packs using the item configuration. Deducts raw material, adds prepared item stock, and creates conversion_out & conversion_in audit transactions.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "prepared_item_id": 2,
+            "packs": 2
+          }
+        },
+        {
+          "name": "3. Manual Stock Conversion",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions",
+          "description": "Manually transfers quantity from source raw item to target prepared item.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "branch_id": 1,
+            "inventory_item_id": 1,
+            "converted_item_id": 2,
+            "quantity": 5
+          }
+        },
+        {
+          "name": "Get Stock Conversion Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+          "description": "Returns conversion details.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Stock Conversion",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+          "description": "Reconciles stock delta difference between old and new quantity safely.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "quantity": 6
+          }
+        },
+        {
+          "name": "Delete Stock Conversion (Reverses Stock)",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/stock-conversions/{{stock_conversion_id}}",
+          "description": "Reverses source and target item stocks and deletes the conversion log.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    },
+    {
+      "module_name": "6. Recipes & Bill of Materials (BOM)",
+      "description": "Link menu items to inventory ingredients so POS & online orders automatically deduct raw materials.",
+      "endpoints": [
+        {
+          "name": "List Recipes",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/recipes?branch_id={{branch_id}}&menu_item_id={{menu_item_id}}&search=&all=false&per_page=15",
+          "description": "Lists recipes with menuItem, branch, and ingredients.inventoryItem.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ],
+          "query_params": [
+            {
+              "name": "branch_id",
+              "default_value": "{{branch_id}}",
+              "description": "Filter by branch"
+            },
+            {
+              "name": "menu_item_id",
+              "default_value": "{{menu_item_id}}",
+              "description": "Filter by menu item"
+            },
+            {
+              "name": "search",
+              "default_value": "",
+              "description": "Search recipe name"
+            },
+            {
+              "name": "all",
+              "default_value": "false",
+              "description": "Unpaginated if true"
+            },
+            {
+              "name": "per_page",
+              "default_value": "15",
+              "description": "Per page"
+            }
+          ]
+        },
+        {
+          "name": "Create Recipe with Ingredients",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/recipes",
+          "description": "Creates recipe linked to a menu item with ingredient lines.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "name": "Classic Cheeseburger Recipe",
+            "menu_item_id": 1,
+            "branch_id": 1,
+            "ingredients": [
+              {
+                "inventory_item_id": 2,
+                "quantity": 1,
+                "unit": "pcs"
+              },
+              {
+                "inventory_item_id": 1,
+                "quantity": 0.05,
+                "unit": "kg"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Get Recipe Detail",
+          "method": "GET",
+          "endpoint": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+          "description": "Returns recipe with menuItem and nested ingredients.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Update Recipe (Replace Ingredients)",
+          "method": "PUT",
+          "endpoint": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+          "description": "Updates recipe header and replaces ingredient list.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "name": "Classic Cheeseburger Recipe (v2)",
+            "ingredients": [
+              {
+                "inventory_item_id": 2,
+                "quantity": 2,
+                "unit": "pcs"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Add Single Ingredient to Recipe",
+          "method": "POST",
+          "endpoint": "{{base_url}}/api/v1/recipes/{{recipe_id}}/ingredients",
+          "description": "Adds or updates a single ingredient on the recipe.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}",
+            "Content-Type: application/json"
+          ],
+          "body": {
+            "inventory_item_id": 1,
+            "quantity": 0.03,
+            "unit": "kg"
+          }
+        },
+        {
+          "name": "Remove Single Ingredient from Recipe",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/recipes/{{recipe_id}}/ingredients/{{ingredient_id}}",
+          "description": "Removes single ingredient line from recipe.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        },
+        {
+          "name": "Delete Recipe",
+          "method": "DELETE",
+          "endpoint": "{{base_url}}/api/v1/recipes/{{recipe_id}}",
+          "description": "Deletes recipe and all its ingredients.",
+          "headers": [
+            "Accept: application/json",
+            "Authorization: Bearer {{token}}"
+          ]
+        }
+      ]
+    }
+  ]
+}

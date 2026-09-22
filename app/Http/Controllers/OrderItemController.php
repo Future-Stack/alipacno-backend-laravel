@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\OrderItemTopping;
 use App\Models\SpiceLevel;
 use App\Models\Topping;
+use App\Services\InventoryStockService;
 use Illuminate\Http\Request;
 
 class OrderItemController extends Controller
@@ -54,6 +55,15 @@ class OrderItemController extends Controller
             'quantity' => 'required|integer|min:1',
             'special_instructions' => 'nullable|string',
         ]);
+
+        $order = Order::find($validated['order_id']);
+
+        // Validate branch stock before adding line item
+        if ($order && !empty($order->branch_id)) {
+            InventoryStockService::validateStockForItems((int) $order->branch_id, [
+                ['menu_item_id' => $validated['menu_item_id'], 'quantity' => (int) $validated['quantity']]
+            ]);
+        }
 
         $menuItem = MenuItem::findOrFail($validated['menu_item_id']);
         $unitPrice = (float) $menuItem->price;
@@ -119,12 +129,11 @@ class OrderItemController extends Controller
         }
 
         // Recalculate parent order total amount
-        $order = Order::find($validated['order_id']);
         if ($order) {
             $newTotal = OrderItem::where('order_id', $order->id)->sum('subtotal');
             $order->update([
                 'subtotal' => $newTotal,
-                'total_amount' => max(0, $newTotal + $order->delivery_fee + $order->service_fee + $order->rider_tip - $order->discount_amount)
+                'total' => max(0, $newTotal + $order->delivery_fee + $order->vat + $order->tip + $order->rider_tip - $order->discount)
             ]);
         }
 
@@ -150,6 +159,13 @@ class OrderItemController extends Controller
         ]);
 
         if (isset($validated['quantity'])) {
+            $order = Order::find($orderItem->order_id);
+            if ($order && !empty($order->branch_id)) {
+                InventoryStockService::validateStockForItems((int) $order->branch_id, [
+                    ['menu_item_id' => $orderItem->menu_item_id, 'quantity' => (int) $validated['quantity']]
+                ]);
+            }
+
             $validated['subtotal'] = $orderItem->unit_price * (int) $validated['quantity'];
         }
 
@@ -161,7 +177,7 @@ class OrderItemController extends Controller
             $newTotal = OrderItem::where('order_id', $order->id)->sum('subtotal');
             $order->update([
                 'subtotal' => $newTotal,
-                'total_amount' => max(0, $newTotal + $order->delivery_fee + $order->service_fee + $order->rider_tip - $order->discount_amount)
+                'total' => max(0, $newTotal + $order->delivery_fee + $order->vat + $order->tip + $order->rider_tip - $order->discount)
             ]);
         }
 

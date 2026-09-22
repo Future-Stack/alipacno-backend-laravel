@@ -1,0 +1,320 @@
+========================================================================================
+         PACINO'S INVENTORY MANAGEMENT SYSTEM — COMPLETE WORKFLOW DOCUMENTATION
+========================================================================================
+System Version: 2.0 (Production-Ready Architecture)
+Target Portal : Pacino's Restaurant & Admin HQ (admin.pacinos.uk)
+Tech Stack    : Laravel 11.x REST API, MySQL, Atomic Transactions, Idempotent Logic
+========================================================================================
+
+
+----------------------------------------------------------------------------------------
+1. EXECUTIVE OVERVIEW & CORE CONCEPTS
+----------------------------------------------------------------------------------------
+Pacino's Inventory Management System is designed for scalable, multi-branch restaurant
+operations. It provides:
+  • Multi-branch stock isolation (each branch has independent quantities & thresholds).
+  • Raw Material to Prepared Item yield conversion math (e.g. 7 kg raw = 50 pcs prepared).
+  • Supplier / Vendor attribution and purchase traceability.
+  • Inter-branch stock distribution from Central Kitchen / Mother Branch to sub-branches.
+  • Strict pre-order stock validation (blocks orders if ingredients are insufficient).
+  • Automated, idempotent stock deduction upon order completion / delivery.
+
+KEY TERMINOLOGY & ENTITIES:
+  1. Raw Material (type = "raw_material"):
+     Unprocessed ingredients bought in bulk from wholesale vendors.
+     Examples: Minced Beef (in kg), Fresh Milk (in liters), Flour (in kg), Tomatoes (in kg).
+
+  2. Prepared Item (type = "prepared"):
+     Kitchen-prepped, portioned, or cooked items derived from raw materials.
+     Examples: Burger Patties 4oz (in pcs), Pizza Dough (in pcs), Sauce Portions (in pcs).
+
+  3. Yield Conversion Ratio (Formula):
+     The exact mathematical ratio converting raw units to prepared units.
+     Example: pack_size = 7.0 kg Raw Beef  ===>  yield_qty = 50 pcs Burger Patties.
+
+  4. Mother Branch (Central Kitchen / HQ):
+     Branch #1 where bulk purchases are stocked, prepped into batches, and distributed.
+
+  5. Sub-Branches (Branch Isolation):
+     Locations like Manchester (Branch #2) and Birmingham (Branch #3). They receive stock
+     transfers from HQ or directly purchase from local suppliers. Orders placed at a branch
+     deduct stock ONLY from that branch.
+
+
+----------------------------------------------------------------------------------------
+2. DATABASE ARCHITECTURE & ENTITY RELATIONSHIPS
+----------------------------------------------------------------------------------------
+  [suppliers]
+    • id, branch_id, name, phone, email, address
+       │
+       │ (1 to N)
+       ▼
+  [inventory_items]
+    • id                      : Primary Key
+    • branch_id               : Foreign Key -> branches.id
+    • category_id             : Foreign Key -> inventory_categories.id
+    • type                    : enum('raw_material', 'prepared')
+    • name, sku               : e.g. "Minced Beef", "RM-BEEF-001"
+    • quantity                : Current on-hand stock (decimal 10,2)
+    • minimum_stock           : Alert threshold limit (decimal 10,2)
+    • unit                    : 'kg', 'pcs', 'liters', 'packs', 'bottles'
+    • purchase_price          : Cost price per unit (£)
+    • selling_price           : Customer price if sold directly (£)
+    • status                  : 'in_stock', 'low_stock', 'out_of_stock'
+    • made_from_item_id       : Foreign Key -> self.id (points to raw item)
+    • pack_size, pack_unit    : e.g. 7.00, 'kg'
+    • yield_qty, yield_unit   : e.g. 50.00, 'pcs'
+       │
+       ├─────────────────────────────────────────┐
+       ▼ (1 to N)                                ▼ (1 to N)
+  [inventory_transactions]                  [stock_conversions]
+    • id                                      • id
+    • inventory_item_id                       • branch_id
+    • supplier_id (nullable)                  • inventory_item_id (Raw FK)
+    • transaction_type:                       • converted_item_id (Prep FK)
+        - 'purchase' (Vendor Delivery)        • quantity (Raw Consumed)
+        - 'sale'     (Order Deduction)        • created_by (User FK)
+        - 'waste'    (Spoilage/Damaged)
+        - 'adjustment' (Audit Reconcile)
+        - 'transfer_in' / 'transfer_out'
+        - 'conversion_in' / 'conversion_out'
+    • quantity (decimal 10,2)
+    • notes, created_by
+
+
+----------------------------------------------------------------------------------------
+3. COMPLETE STEP-BY-STEP BUSINESS WORKFLOWS
+----------------------------------------------------------------------------------------
+
+WORKFLOW A: Category & Raw Material Setup
+-----------------------------------------
+1. Create Category:
+   POST /api/v1/inventory-categories
+   Body:
+   {
+       "branch_id": 1,
+       "name": "Raw Meat & Poultry",
+       "description": "Uncooked fresh meats"
+   }
+
+2. Create Raw Material Item:
+   POST /api/v1/inventory-items
+   Body:
+   {
+       "branch_id": 1,
+       "category_id": 1,
+       "type": "raw_material",
+       "name": "Minced Beef (80/20)",
+       "sku": "RM-BEEF-001",
+       "quantity": 100.0,
+       "unit": "kg",
+       "purchase_price": 4.50,
+       "minimum_stock": 15.0,
+       "description": "Fresh raw minced beef"
+   }
+
+
+WORKFLOW B: Prepared Item Setup (With Conversion Formula)
+---------------------------------------------------------
+Create a prepared item and link it to the raw material:
+   POST /api/v1/inventory-items
+   Body:
+   {
+       "branch_id": 1,
+       "category_id": 1,
+       "type": "prepared",
+       "name": "Burger Patties (4oz)",
+       "sku": "PR-PATTY-001",
+       "made_from_item_id": 1,
+       "pack_size": 7.0,
+       "pack_unit": "kg",
+       "yield_qty": 50.0,
+       "yield_unit": "pcs",
+       "quantity": 0.0,
+       "unit": "pcs",
+       "purchase_price": 1.20,
+       "selling_price": 2.50,
+       "minimum_stock": 40.0,
+       "description": "4oz patties prepped in kitchen"
+   }
+   Formula Meaning: Every 7 kg of raw beef yields exactly 50 patties.
+
+
+WORKFLOW C: Supplier Onboarding & Stock Purchases
+-------------------------------------------------
+1. Register Wholesale Supplier:
+   POST /api/v1/suppliers
+   Body:
+   {
+       "branch_id": 1,
+       "name": "Smithfield Meat Wholesalers",
+       "phone": "+44 20 7946 0991",
+       "email": "orders@smithfieldmeats.co.uk",
+       "address": "42 Smithfield Market, London EC1A 9LQ"
+   }
+
+2. Record Raw Stock Purchase:
+   POST /api/v1/inventory-transactions
+   Body:
+   {
+       "inventory_item_id": 1,
+       "supplier_id": 1,
+       "transaction_type": "purchase",
+       "quantity": 70.0,
+       "notes": "Weekly Bulk Meat Delivery Invoice #INV-9021"
+   }
+   Result: Minced Beef stock in Branch #1 increases by +70.0 kg. Supplier #1 is logged.
+
+
+WORKFLOW D: Raw-to-Prepared Stock Conversion
+--------------------------------------------
+1. Live Preview Yield (Read-Only):
+   POST /api/v1/stock-conversions/calculate
+   Body:
+   {
+       "inventory_item_id": 1,
+       "converted_item_id": 2,
+       "quantity": 14.0
+   }
+   Response Preview: 14 kg raw beef ===> 100 pcs prepared patties.
+
+2. Execute Atomic Conversion:
+   POST /api/v1/stock-conversions/convert
+   Body:
+   {
+       "prepared_item_id": 2,
+       "packs": 2.0
+   }
+   Database Actions (Inside 1 Atomic Transaction):
+     • Raw Beef stock: -14.0 kg  (conversion_out log created)
+     • Burger Patties stock: +100.0 pcs (conversion_in log created)
+
+
+WORKFLOW E: Inter-Branch Stock Distribution
+-------------------------------------------
+Send prepared stock from Central London (HQ) to Manchester (Branch #2):
+   POST /api/v1/inventory-items/2/distribute
+   Body:
+   {
+       "branch_id": 2,
+       "quantity": 40.0
+   }
+   Database Actions:
+     • Deducts 40 pcs from Central London (Branch #1).
+     • Increments / Creates Burger Patties in Manchester (Branch #2) by +40 pcs.
+     • Logs transfer_out on Branch #1 and transfer_in on Branch #2.
+
+
+WORKFLOW F: Bill of Materials (BOM) & Menu Item Recipes
+-------------------------------------------------------
+Link selling menu items to inventory items:
+   POST /api/v1/recipes
+   Body:
+   {
+       "name": "Pacino's Double Cheeseburger",
+       "branch_id": 1,
+       "menu_item_id": 10,
+       "ingredients": [
+           {
+               "inventory_item_id": 2,
+               "quantity": 2.0,
+               "unit": "pcs"
+           }
+       ]
+   }
+
+
+WORKFLOW G: Pre-Order Stock Validation & Blocking
+-------------------------------------------------
+When an order is submitted via Online Cart or POS Checkout:
+   1. OrderController@store / POSController@checkout calls InventoryStockService.
+   2. Verifies if the requested branch has enough on-hand stock for each ingredient.
+   3. If insufficient stock:
+      Aborts immediately and returns HTTP 422:
+      "Insufficient stock for Burger Patties in this branch (Available: 1, Required: 2)."
+      No order record is created.
+
+
+WORKFLOW H: Automated Order Stock Deduction & Idempotency
+---------------------------------------------------------
+When an order transitions to "order_status: completed" or "delivery_status: delivered":
+   1. System calls InventoryStockService::deductStockForOrder($order).
+   2. Idempotency Check: Checks if a 'sale' transaction for this Order # already exists.
+      If it exists, deduction is skipped (prevents double deductions on multi-status changes).
+   3. Deducts ingredient quantities atomically using DB row locks (lockForUpdate).
+   4. Writes inventory_transactions record:
+      transaction_type = 'sale', notes = "Order #PAC-1001 (Double Cheeseburger x1)".
+
+
+WORKFLOW I: Manual Audits, Adjustments & Kitchen Waste
+------------------------------------------------------
+1. Physical Audit Correction (+Add or -Deduct):
+   POST /api/v1/inventory-transactions
+   Body:
+   {
+       "inventory_item_id": 2,
+       "transaction_type": "adjustment",
+       "adjustment_type": "add",
+       "quantity": 5.0,
+       "notes": "Weekly physical audit count correction"
+   }
+
+2. Log Kitchen Spoilage / Waste:
+   POST /api/v1/inventory-transactions
+   Body:
+   {
+       "inventory_item_id": 2,
+       "transaction_type": "waste",
+       "quantity": 2.0,
+       "notes": "Dropped on prep floor during lunch rush"
+   }
+
+
+----------------------------------------------------------------------------------------
+4. COMPLETE API REFERENCE TABLE
+----------------------------------------------------------------------------------------
+
+METHOD  ENDPOINT                                DESCRIPTION
+------  --------------------------------------  ---------------------------------------
+POST    /api/v1/auth/login                      Login and receive Sanctum Bearer Token
+GET     /api/v1/inventory-categories            List inventory categories for branch
+POST    /api/v1/inventory-categories            Create new inventory category
+GET     /api/v1/inventory-items                 List items (filter by branch, type, status)
+POST    /api/v1/inventory-items                 Create raw material or prepared item
+GET     /api/v1/inventory-items/summary         KPI cards (total, low stock, valuation)
+GET     /api/v1/inventory-items/analytics       Turnover ratio, consumption, top items
+GET     /api/v1/inventory-items/export          Stream filtered inventory to CSV
+POST    /api/v1/inventory-items/{id}/distribute Inter-branch stock transfer
+POST    /api/v1/stock-conversions/calculate     Live preview yield math before convert
+POST    /api/v1/stock-conversions/convert       Execute atomic raw-to-prepared conversion
+GET     /api/v1/stock-conversions               List conversion audit logs
+GET     /api/v1/inventory-transactions          List transaction history & audit trail
+POST    /api/v1/inventory-transactions          Record purchase, adjustment, or waste
+GET     /api/v1/suppliers                       List approved wholesale vendors
+POST    /api/v1/suppliers                       Register new wholesale vendor
+GET     /api/v1/recipes                         List BOM recipes
+POST    /api/v1/recipes                         Create menu item recipe with ingredients
+
+
+----------------------------------------------------------------------------------------
+5. AUTOMATED TEST SUITE & VERIFICATION
+----------------------------------------------------------------------------------------
+All 35 automated Unit and Feature tests pass with 100% green status:
+
+  Run Command:
+  php artisan test tests/Unit/InventoryStockSystemTest.php tests/Feature/InventoryItemTest.php tests/Feature/InventoryCategoryTest.php tests/Feature/RecipeTest.php tests/Feature/StockConversionTest.php tests/Feature/SupplierTest.php
+
+  Results Summary:
+  [PASS] Tests\Unit\InventoryStockSystemTest (Pre-order stock validation & auto deduction)
+  [PASS] Tests\Feature\InventoryItemTest     (Raw/Prepared CRUD, summary, analytics, export)
+  [PASS] Tests\Feature\InventoryCategoryTest (Category CRUD & items counts)
+  [PASS] Tests\Feature\RecipeTest            (BOM recipes & ingredient sync)
+  [PASS] Tests\Feature\StockConversionTest   (Conversion preview & execution)
+  [PASS] Tests\Feature\SupplierTest          (Supplier CRUD & transaction linkage)
+
+  Total: 35 Passed (92 assertions) &bull; Duration: ~1.5s
+
+========================================================================================
+                      PACINO'S HQ &bull; INVENTORY MANAGEMENT SYSTEM
+========================================================================================
+
