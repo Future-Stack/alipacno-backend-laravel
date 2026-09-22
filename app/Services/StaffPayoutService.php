@@ -13,18 +13,30 @@ class StaffPayoutService
 {
     /**
      * Calculate the hourly salary breakdown for a staff member over a given date range.
+     * Prefers the per-shift accrued earnings snapshot when available.
      */
     public function calculateEarnings(Staff $staff, Carbon $startDate, Carbon $endDate): array
     {
-        $attendances = StaffAttendance::where('staff_id', $staff->id)
+        $attendances = StaffAttendance::with('staff')
+            ->where('staff_id', $staff->id)
             ->whereBetween('clock_in', [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()])
             ->whereNotNull('clock_out')
+            ->whereNotNull('total_hours')
             ->get();
 
         $hoursWorked = (float) $attendances->sum('total_hours');
-        $hourlyRate = (float) ($staff->salary ?? 0.00);
-        $grossEarnings = round($hoursWorked * $hourlyRate, 2);
-        $netPayout = round(max(0, $grossEarnings), 2);
+
+        $gross = (float) $attendances->sum(function (StaffAttendance $attendance) {
+            if ($attendance->shift_earnings !== null) {
+                return (float) $attendance->shift_earnings;
+            }
+
+            $rate = $attendance->hourly_rate ?? (float) ($attendance->staff?->salary ?? 0.00);
+
+            return (float) $attendance->total_hours * $rate;
+        });
+
+        $hourlyRate = $hoursWorked > 0 ? round($gross / $hoursWorked, 2) : (float) ($staff->salary ?? 0.00);
 
         return [
             'staff_id' => $staff->id,
@@ -33,61 +45,67 @@ class StaffPayoutService
             'end_date' => $endDate->toDateString(),
             'hours_worked' => round($hoursWorked, 2),
             'hourly_rate' => $hourlyRate,
-            'gross_earnings' => $grossEarnings,
-            'net_payout' => $netPayout,
+            'gross_earnings' => round($gross, 2),
+            'net_payout' => round(max(0, $gross), 2),
         ];
     }
 
     /**
-     * Generate or update a StaffPayout record for a specific staff member and ISO week.
+     * Generate an approved payout for a staff member covering only their unpaid timecards
+     * within the given date range. Returns null when there are no payer timecards.
      */
-    public function generateWeeklyPayout(Staff $staff, int $year, int $weekNumber): StaffPayout
+    public function generatePayoutForRange(Staff $staff, $startDate, $endDate, ?int $approverId = null): ?StaffPayout
     {
-        $date = Carbon::now()->setISODate($year, $weekNumber);
-        $startDate = $date->copy()->startOfWeek();
-        $endDate = $date->copy()->endOfWeek();
+        $start = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->endOfDay();
 
-        $calc = $this->calculateEarnings($staff, $startDate, $endDate);
+        $attendances = StaffAttendance::where('staff_id', $staff->id)
+            ->whereBetween('clock_in', [$start, $end])
+            ->whereNotNull('clock_out')
+            ->whereNotNull('total_hours')
+            ->whereNull('payout_id')
+            ->get();
 
-        return StaffPayout::updateOrCreate(
-            [
-                'staff_id' => $staff->id,
-                'year' => $year,
-                'week_number' => $weekNumber,
-            ],
-            [
-                'start_date' => $startDate->toDateString(),
-                'end_date' => $endDate->toDateString(),
-                'hours_worked' => $calc['hours_worked'],
-                'hourly_rate' => $calc['hourly_rate'],
-                'gross_earnings' => $calc['gross_earnings'],
-                'net_payout' => $calc['net_payout'],
-                'status' => 'pending',
-            ]
-        );
-    }
-
-    /**
-     * Process weekly payouts for ALL staff for the previous week (Week N - 1 week lag).
-     */
-    public function processLaggedWeeklyPayouts(): array
-    {
-        $previousWeek = Carbon::now()->subWeek();
-        $year = $previousWeek->year;
-        $weekNumber = $previousWeek->weekOfYear;
-
-        $staffMembers = Staff::where('status', '!=', 'off_duty')->orWhereHas('attendances')->get();
-        $processed = [];
-
-        foreach ($staffMembers as $staff) {
-            $payout = $this->generateWeeklyPayout($staff, $year, $weekNumber);
-            if ($payout->net_payout > 0 && $payout->status === 'pending') {
-                $this->executeStripeTransfer($payout);
-            }
-            $processed[] = $payout;
+        if ($attendances->isEmpty()) {
+            return null;
         }
 
-        return $processed;
+        $hoursWorked = (float) $attendances->sum('total_hours');
+        $rate = (float) ($staff->salary ?? 0.00);
+
+        $gross = (float) $attendances->sum(function (StaffAttendance $attendance) use ($rate) {
+            if ($attendance->shift_earnings !== null) {
+                return (float) $attendance->shift_earnings;
+            }
+
+            return (float) $attendance->total_hours * $rate;
+        });
+
+        if ($hoursWorked <= 0 || $gross <= 0) {
+            return null;
+        }
+
+        $endDateCarbon = Carbon::parse($endDate);
+
+        $payout = StaffPayout::create([
+            'staff_id' => $staff->id,
+            'branch_id' => $staff->branch_id,
+            'year' => $endDateCarbon->isoWeekYear,
+            'week_number' => $endDateCarbon->isoWeek(),
+            'start_date' => Carbon::parse($startDate)->toDateString(),
+            'end_date' => $endDateCarbon->toDateString(),
+            'hours_worked' => round($hoursWorked, 2),
+            'hourly_rate' => $rate,
+            'gross_earnings' => round($gross, 2),
+            'net_payout' => round(max(0, $gross), 2),
+            'status' => 'approved',
+            'approved_at' => now(),
+            'approved_by' => $approverId,
+        ]);
+
+        $payout->attendance()->saveMany($attendances);
+
+        return $payout;
     }
 
     /**
@@ -122,11 +140,15 @@ class StaffPayoutService
                 return false;
             }
 
+            $periodLabel = ($payout->start_date && $payout->end_date)
+                ? $payout->start_date . ' to ' . $payout->end_date
+                : "Week {$payout->week_number}, {$payout->year}";
+
             $transfer = $stripe->transfers->create([
                 'amount' => $amountInCents,
                 'currency' => 'gbp',
                 'destination' => $staff->stripe_account_id,
-                'description' => "Staff Salary Payout - Week {$payout->week_number}, {$payout->year}",
+                'description' => 'Staff Salary Payout - ' . $periodLabel,
             ]);
 
             $payout->update([

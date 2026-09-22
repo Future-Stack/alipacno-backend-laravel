@@ -13,6 +13,7 @@ class StaffPayout extends Model
 
     protected $fillable = [
         'staff_id',
+        'branch_id',
         'year',
         'week_number',
         'start_date',
@@ -24,6 +25,8 @@ class StaffPayout extends Model
         'status',
         'stripe_transfer_id',
         'paid_at',
+        'approved_at',
+        'approved_by',
         'notes',
     ];
 
@@ -35,10 +38,26 @@ class StaffPayout extends Model
         'gross_earnings' => 'float',
         'net_payout' => 'float',
         'paid_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
 
     public function staff()
     {
         return $this->belongsTo(Staff::class);
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function attendance()
+    {
+        return $this->hasMany(StaffAttendance::class, 'payout_id');
     }
 }

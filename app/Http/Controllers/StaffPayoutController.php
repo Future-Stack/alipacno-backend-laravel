@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Staff;
+use App\Models\StaffAttendance;
 use App\Models\StaffPayout;
 use App\Services\StaffPayoutService;
 use Carbon\Carbon;
@@ -88,7 +89,7 @@ class StaffPayoutController extends Controller
     }
 
     /**
-     * Branch Admin: Calculate / preview a staff member's payout for a specific ISO week (does not save).
+     * Branch Admin: Calculate / preview a staff member's earnings for a date range or ISO week (does not save).
      */
     public function calculate(Request $request)
     {
@@ -96,20 +97,28 @@ class StaffPayoutController extends Controller
             'staff_id' => 'required|exists:staff,id',
             'year' => 'nullable|integer',
             'week_number' => 'nullable|integer',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         $staff = Staff::findOrFail($validated['staff_id']);
 
-        $year = (int) ($validated['year'] ?? now()->year);
-        $weekNumber = (int) ($validated['week_number'] ?? now()->subWeek()->weekOfYear);
+        if ($request->filled('start_date') || $request->filled('end_date')) {
+            $start = Carbon::parse($validated['start_date'] ?? $validated['end_date'])->startOfDay();
+            $end = Carbon::parse($validated['end_date'] ?? $validated['start_date'])->endOfDay();
+            $year = (int) $end->isoWeekYear;
+            $weekNumber = (int) $end->isoWeek();
+        } else {
+            $year = (int) ($validated['year'] ?? now()->year);
+            $weekNumber = (int) ($validated['week_number'] ?? now()->subWeek()->isoWeek());
 
-        $date = Carbon::now()->setISODate($year, $weekNumber);
-        $start = $date->copy()->startOfWeek();
-        $end = $date->copy()->endOfWeek();
+            $date = Carbon::now()->setISODate($year, $weekNumber);
+            $start = $date->copy()->startOfWeek();
+            $end = $date->copy()->endOfWeek();
+        }
 
         $calc = $this->payoutService->calculateEarnings($staff, $start, $end);
 
-        // Include any previously saved payout for this week for reference
         $existing = StaffPayout::where('staff_id', $staff->id)
             ->where('year', $year)
             ->where('week_number', $weekNumber)
@@ -166,44 +175,328 @@ class StaffPayoutController extends Controller
     }
 
     /**
-     * Branch Admin: Process weekly staff payouts for all staff (previous week lag by default,
-     * or specify year/week_number). Mirrors the scheduled `staff:process-weekly-payouts` command.
+     * Branch Admin / Staff Management: Approve AND pay a single staff member's
+     * accrued timecards for any date range (1 day or multiple days) in one action.
      */
-    public function processWeekly(Request $request)
+    public function approve(Request $request)
     {
         $validated = $request->validate([
-            'year' => 'nullable|integer',
-            'week_number' => 'nullable|integer',
+            'staff_id' => 'required|exists:staff,id',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'notes' => 'nullable|string',
+            'manual_payment' => 'nullable|boolean',
         ]);
 
-        if (!empty($validated['year']) && !empty($validated['week_number'])) {
-            $year = (int) $validated['year'];
-            $weekNumber = (int) $validated['week_number'];
+        $staff = Staff::with('driver')->findOrFail($validated['staff_id']);
 
-            $staffMembers = Staff::where('status', '!=', 'off_duty')->orWhereHas('attendances')->get();
-            $processed = [];
+        if ($staff->driver) {
+            return response()->json([
+                'status' => 422,
+                'message' => 'Driver-linked staff cannot be paid through the staff payout flow.',
+            ], 422);
+        }
 
-            foreach ($staffMembers as $staff) {
-                $payout = $this->payoutService->generateWeeklyPayout($staff, $year, $weekNumber);
-                if ($payout->net_payout > 0 && $payout->status === 'pending') {
-                    $this->payoutService->executeStripeTransfer($payout);
-                }
-                $processed[] = $payout;
-            }
+        $payout = $this->payoutService->generatePayoutForRange(
+            $staff,
+            $validated['start_date'],
+            $validated['end_date'],
+            $request->user()?->id
+        );
+
+        if (!$payout) {
+            return response()->json([
+                'status' => 422,
+                'message' => 'No payable (unpaid) timecards found for this staff member in the given range.',
+            ], 422);
+        }
+
+        $payout->update(['notes' => $validated['notes'] ?? null]);
+
+        if (!empty($validated['manual_payment'])) {
+            $payout->update([
+                'status' => 'paid',
+                'paid_at' => now(),
+                'notes' => trim((string) ($validated['notes'] ?? '') . ' Marked as paid manually by admin.'),
+            ]);
 
             return response()->json([
                 'status' => 200,
-                'data' => $processed,
-                'message' => "Staff weekly payouts processed for week {$weekNumber}, {$year}.",
+                'data' => $payout->fresh()->load('staff', 'attendance'),
+                'message' => 'Payout approved and marked as paid manually.',
             ]);
         }
 
-        $processed = $this->payoutService->processLaggedWeeklyPayouts();
+        if (!$staff->stripe_account_id || !$staff->stripe_onboarding_completed) {
+            return response()->json([
+                'status' => 422,
+                'data' => $payout->fresh()->load('staff', 'attendance'),
+                'message' => 'Payout approved but Stripe transfer skipped. Staff member must complete Stripe onboarding first.',
+            ], 422);
+        }
+
+        $success = $this->payoutService->executeStripeTransfer($payout);
+
+        if ($success) {
+            return response()->json([
+                'status' => 200,
+                'data' => $payout->fresh()->load('staff', 'attendance'),
+                'message' => 'Payout approved and paid successfully.',
+            ]);
+        }
+
+        return response()->json([
+            'status' => 422,
+            'data' => $payout->fresh()->load('staff', 'attendance'),
+            'message' => 'Payout approved but the Stripe transfer could not be completed. Review the payout record or process manually.',
+        ], 422);
+    }
+
+    /**
+     * Branch Admin / Staff Management: Approve AND pay accrued timecards for all
+     * eligible staff in a branch for any date range, in one batch action.
+     */
+    public function approveBatch(Request $request)
+    {
+        $validated = $request->validate([
+            'branch_id' => 'required|exists:branches,id',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'staff_ids' => 'nullable|array',
+            'staff_ids.*' => 'integer|exists:staff,id',
+            'manual_payment' => 'nullable|boolean',
+        ]);
+
+        $staffQuery = Staff::where('branch_id', $validated['branch_id'])
+            ->where('status', '!=', 'off_duty')
+            ->whereDoesntHave('driver');
+
+        if (!empty($validated['staff_ids'])) {
+            $staffQuery->whereIn('id', $validated['staff_ids']);
+        }
+
+        $staffMembers = $staffQuery->get();
+
+        $paid = [];
+        $skipped = [];
+        $errors = [];
+
+        foreach ($staffMembers as $staff) {
+            $payout = $this->payoutService->generatePayoutForRange(
+                $staff,
+                $validated['start_date'],
+                $validated['end_date'],
+                $request->user()?->id
+            );
+
+            if (!$payout) {
+                continue;
+            }
+
+            if (!empty($validated['manual_payment'])) {
+                $payout->update([
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                    'notes' => 'Marked as paid manually by admin.',
+                ]);
+                $paid[] = $payout->load('staff', 'attendance');
+                continue;
+            }
+
+            if (!$staff->stripe_account_id || !$staff->stripe_onboarding_completed) {
+                $skipped[] = [
+                    'staff_id' => $staff->id,
+                    'staff_name' => $staff->name,
+                    'payout_id' => $payout->id,
+                    'reason' => 'Stripe onboarding incomplete.',
+                ];
+                continue;
+            }
+
+            if ($this->payoutService->executeStripeTransfer($payout)) {
+                $paid[] = $payout->fresh()->load('staff', 'attendance');
+            } else {
+                $errors[] = [
+                    'staff_id' => $staff->id,
+                    'staff_name' => $staff->name,
+                    'payout_id' => $payout->id,
+                    'reason' => 'Stripe transfer failed. Review the payout record or process manually.',
+                ];
+            }
+        }
 
         return response()->json([
             'status' => 200,
-            'data' => $processed,
-            'message' => 'Staff weekly payouts processed for the previous week.',
+            'data' => [
+                'branch_id' => $validated['branch_id'],
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'paid' => $paid,
+                'skipped' => $skipped,
+                'errors' => $errors,
+                'summary' => [
+                    'paid_count' => count($paid),
+                    'skipped_count' => count($skipped),
+                    'error_count' => count($errors),
+                    'total_paid' => round(array_sum(array_map(fn ($payout) => (float) $payout->net_payout, $paid)), 2),
+                ],
+            ],
+            'message' => count($paid)
+                ? 'Batch payout approved and processed.'
+                : 'No payouts were processed. Review skipped and error lists.',
+        ]);
+    }
+
+    /**
+     * Branch Admin / Staff Management: Payroll review workbench for a branch.
+     * Lists unpaid accrued timecards per staff, missing clock-outs, and paid history.
+     */
+    public function payrollReview(Request $request)
+    {
+        $validated = $request->validate([
+            'branch_id' => 'required|exists:branches,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+        ]);
+
+        $start = Carbon::parse($validated['start_date'] ?? now()->startOfWeek()->toDateString())->startOfDay();
+        $end = Carbon::parse($validated['end_date'] ?? now()->endOfWeek()->toDateString())->endOfDay();
+
+        $attendances = StaffAttendance::with('staff:id,name,employee_id,branch_id,status,salary')
+            ->whereBetween('clock_in', [$start, $end])
+            ->whereHas('staff', function ($q) use ($validated) {
+                $q->where('branch_id', $validated['branch_id'])
+                    ->where('status', '!=', 'off_duty')
+                    ->whereDoesntHave('driver');
+            })
+            ->get();
+
+        $missingClockOuts = StaffAttendance::whereBetween('clock_in', [$start, $end])
+            ->whereNull('clock_out')
+            ->whereHas('staff', function ($q) use ($validated) {
+                $q->where('branch_id', $validated['branch_id'])
+                    ->where('status', '!=', 'off_duty')
+                    ->whereDoesntHave('driver');
+            })
+            ->get()
+            ->groupBy('staff_id')
+            ->map->count();
+
+        $staffPayable = $attendances
+            ->whereNull('payout_id')
+            ->whereNotNull('clock_out')
+            ->whereNotNull('total_hours')
+            ->groupBy('staff_id')
+            ->map(function ($rows) use ($missingClockOuts) {
+                $staff = $rows->first()->staff;
+                $hours = (float) $rows->sum('total_hours');
+                $gross = (float) $rows->sum(function ($row) {
+                    if ($row->shift_earnings !== null) {
+                        return (float) $row->shift_earnings;
+                    }
+
+                    return (float) $row->total_hours * (float) ($row->staff?->salary ?? 0.00);
+                });
+
+                return [
+                    'staff_id' => $staff->id,
+                    'staff_name' => $staff->name,
+                    'employee_id' => $staff->employee_id,
+                    'shift_count' => $rows->count(),
+                    'hours_worked' => round($hours, 2),
+                    'gross_earnings' => round($gross, 2),
+                    'missing_clock_outs' => (int) $missingClockOuts->get($staff->id, 0),
+                ];
+            })
+            ->keyBy('staff_id');
+
+        foreach ($missingClockOuts as $staffId => $count) {
+            if ($staffPayable->has($staffId)) {
+                continue;
+            }
+
+            $staff = Staff::find($staffId);
+            if (!$staff) {
+                continue;
+            }
+
+            $staffPayable->put($staffId, [
+                'staff_id' => $staff->id,
+                'staff_name' => $staff->name,
+                'employee_id' => $staff->employee_id,
+                'shift_count' => 0,
+                'hours_worked' => 0.0,
+                'gross_earnings' => 0.0,
+                'missing_clock_outs' => (int) $count,
+            ]);
+        }
+
+        $staffPayable = $staffPayable->values();
+
+        $paidHistory = StaffPayout::with('staff:id,name')
+            ->where('branch_id', $validated['branch_id'])
+            ->whereBetween('start_date', [$start->toDateString(), $end->toDateString()])
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (StaffPayout $payout) => [
+                'payout_id' => $payout->id,
+                'staff_id' => $payout->staff_id,
+                'staff_name' => $payout->staff?->name,
+                'start_date' => $payout->start_date?->toDateString(),
+                'end_date' => $payout->end_date?->toDateString(),
+                'hours_worked' => $payout->hours_worked,
+                'gross_earnings' => $payout->gross_earnings,
+                'net_payout' => $payout->net_payout,
+                'status' => $payout->status,
+                'paid_at' => $payout->paid_at?->toDateTimeString(),
+            ]);
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'branch_id' => $validated['branch_id'],
+                'start_date' => $start->toDateString(),
+                'end_date' => $end->toDateString(),
+                'staff_payable' => $staffPayable,
+                'total_unpaid_gross' => round((float) $staffPayable->sum('gross_earnings'), 2),
+                'paid_history' => $paidHistory,
+            ],
+        ]);
+    }
+
+    /**
+     * Staff App: Individual salary ledger / payout history for the authenticated staff member.
+     */
+    public function salaryHistory(Request $request)
+    {
+        $user = Auth::user();
+        $staff = Staff::where('user_id', $user?->id)->first();
+
+        if (!$staff) {
+            return response()->json(['status' => 404, 'message' => 'Staff profile not found.'], 404);
+        }
+
+        $history = StaffPayout::withCount('attendance')
+            ->where('staff_id', $staff->id)
+            ->orderByDesc('id')
+            ->paginate($request->input('per_page', 15));
+
+        $totals = StaffPayout::where('staff_id', $staff->id)
+            ->where('status', 'paid')
+            ->selectRaw('COALESCE(SUM(hours_worked), 0) as total_hours, COALESCE(SUM(net_payout), 0) as total_net')
+            ->first();
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'staff_id' => $staff->id,
+                'staff_name' => $staff->name,
+                'totals' => [
+                    'paid_hours' => (float) ($totals->total_hours ?? 0),
+                    'net_paid' => (float) ($totals->total_net ?? 0),
+                ],
+                'history' => $history,
+            ],
         ]);
     }
 

@@ -13,9 +13,3 @@ use Illuminate\Support\Facades\Schedule;
  * Runs every Monday at midnight (00:00) for Week N (1-week payment lag)
  */
 Schedule::command('drivers:process-weekly-payouts')->weeklyOn(1, '00:00');
-
-/**
- * Schedule Weekly Staff Salary Payout Processing
- * Runs every Monday at midnight (00:00) for Week N (1-week payment lag)
- */
-Schedule::command('staff:process-weekly-payouts')->weeklyOn(1, '00:00');

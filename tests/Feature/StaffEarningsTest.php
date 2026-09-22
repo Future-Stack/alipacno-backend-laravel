@@ -93,14 +93,14 @@ class StaffEarningsTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('status', 200)
             ->assertJsonPath('data.staff_id', $this->staffMember->id)
-            ->assertJsonPath('data.stripe_onboarding_completed', false)
-            ->assertJsonPath('data.current_week.hours_worked', 8.0)
-            ->assertJsonPath('data.current_week.hourly_rate', 10.0)
-            ->assertJsonPath('data.current_week.gross_earnings', 80.0)
-            ->assertJsonPath('data.current_week.net_payout', 80.0)
-            ->assertJsonPath('data.previous_week_lagged.hours_worked', 12.0)
-            ->assertJsonPath('data.previous_week_lagged.gross_earnings', 120.0)
-            ->assertJsonPath('data.previous_week_lagged.net_payout', 120.0);
+            ->assertJsonPath('data.stripe_onboarding_completed', false);
+        $this->assertEquals(8.0, $response->json('data.current_week.hours_worked'));
+        $this->assertEquals(10.0, $response->json('data.current_week.hourly_rate'));
+        $this->assertEquals(80.0, $response->json('data.current_week.gross_earnings'));
+        $this->assertEquals(80.0, $response->json('data.current_week.net_payout'));
+        $this->assertEquals(12.0, $response->json('data.previous_week_lagged.hours_worked'));
+        $this->assertEquals(120.0, $response->json('data.previous_week_lagged.gross_earnings'));
+        $this->assertEquals(120.0, $response->json('data.previous_week_lagged.net_payout'));
     }
 
     public function test_staff_earnings_includes_previous_week_payout_history(): void
@@ -129,8 +129,8 @@ class StaffEarningsTest extends TestCase
             ->assertJsonPath('data.payout_history.0.staff_id', $this->staffMember->id)
             ->assertJsonPath('data.payout_history.0.year', $year)
             ->assertJsonPath('data.payout_history.0.week_number', $weekNumber)
-            ->assertJsonPath('data.payout_history.0.net_payout', 120.0)
             ->assertJsonCount(1, 'data.payout_history');
+        $this->assertEquals(120.0, $response->json('data.payout_history.0.net_payout'));
     }
 
     public function test_admin_can_view_staff_earnings_by_staff_id(): void
@@ -147,8 +147,8 @@ class StaffEarningsTest extends TestCase
             ->getJson('/api/v1/staff/earnings?staff_id=' . $this->staffMember->id);
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.staff_id', $this->staffMember->id)
-            ->assertJsonPath('data.current_week.hours_worked', 8.0);
+            ->assertJsonPath('data.staff_id', $this->staffMember->id);
+        $this->assertEquals(8.0, $response->json('data.current_week.hours_worked'));
     }
 
     public function test_user_without_staff_profile_gets_404(): void

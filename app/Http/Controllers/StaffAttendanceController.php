@@ -3,11 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\StaffAttendance;
-use Carbon\Carbon;
+use App\Services\StaffAttendanceService;
 use Illuminate\Http\Request;
 
 class StaffAttendanceController extends Controller
 {
+    protected StaffAttendanceService $attendanceService;
+
+    public function __construct(StaffAttendanceService $attendanceService)
+    {
+        $this->attendanceService = $attendanceService;
+    }
     /**
      * Display a listing of staff attendance records.
      */
@@ -54,6 +60,7 @@ class StaffAttendanceController extends Controller
             'clock_in' => 'required|date',
             'clock_out' => 'nullable|date|after_or_equal:clock_in',
             'status' => 'nullable|string|in:present,absent,late,on_leave',
+            'notes' => 'nullable|string',
         ]);
 
         if (empty($validated['status'])) {
@@ -61,10 +68,12 @@ class StaffAttendanceController extends Controller
         }
 
         if (!empty($validated['clock_out'])) {
-            $validated['total_hours'] = $this->calculateTotalHours($validated['clock_in'], $validated['clock_out']);
+            $validated['total_hours'] = $this->attendanceService->calculateTotalHours($validated['clock_in'], $validated['clock_out']);
         }
 
         $attendance = StaffAttendance::create($validated);
+
+        $this->attendanceService->applyShiftEarnings($attendance);
 
         return response()->json($attendance->load('staff'), 201);
     }
@@ -82,23 +91,39 @@ class StaffAttendanceController extends Controller
      */
     public function update(Request $request, StaffAttendance $staffAttendance)
     {
+        $attendance = $staffAttendance;
+
+        if ($attendance->payout_id) {
+            return response()->json([
+                'message' => 'This timecard is already included in a paid payout and cannot be edited.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'staff_id' => 'sometimes|required|exists:staff,id',
             'clock_in' => 'sometimes|required|date',
             'clock_out' => 'nullable|date|after_or_equal:clock_in',
             'status' => 'sometimes|required|string|in:present,absent,late,on_leave',
+            'notes' => 'nullable|string',
         ]);
 
-        $clockIn = $validated['clock_in'] ?? $staffAttendance->clock_in;
-        $clockOut = array_key_exists('clock_out', $validated) ? $validated['clock_out'] : $staffAttendance->clock_out;
+        $clockIn = $validated['clock_in'] ?? $attendance->clock_in;
+        $clockOut = array_key_exists('clock_out', $validated) ? $validated['clock_out'] : $attendance->clock_out;
 
         if ($clockIn && $clockOut) {
-            $validated['total_hours'] = $this->calculateTotalHours($clockIn, $clockOut);
+            $validated['total_hours'] = $this->attendanceService->calculateTotalHours($clockIn, $clockOut);
         }
 
-        $staffAttendance->update($validated);
+        if ($request->user()) {
+            $validated['reviewed_at'] = now();
+            $validated['reviewed_by'] = $request->user()->id;
+        }
 
-        return response()->json($staffAttendance->load('staff'));
+        $attendance->update($validated);
+
+        $this->attendanceService->applyShiftEarnings($attendance);
+
+        return response()->json($attendance->load('staff'));
     }
 
     /**
@@ -221,12 +246,14 @@ class StaffAttendanceController extends Controller
         }
 
         $clockOutTime = now();
-        $totalHours = $this->calculateTotalHours($staffAttendance->clock_in, $clockOutTime);
+        $totalHours = $this->attendanceService->calculateTotalHours($staffAttendance->clock_in, $clockOutTime);
 
         $staffAttendance->update([
             'clock_out' => $clockOutTime,
             'total_hours' => $totalHours,
         ]);
+
+        $this->attendanceService->applyShiftEarnings($staffAttendance);
 
         return response()->json([
             'success' => true,
@@ -234,18 +261,5 @@ class StaffAttendanceController extends Controller
             'total_hours' => $totalHours,
             'data' => $staffAttendance->load('staff'),
         ]);
-    }
-
-    /**
-     * Calculate total hours between clock in and clock out timestamps.
-     */
-    protected function calculateTotalHours($clockIn, $clockOut): float
-    {
-        $start = Carbon::parse($clockIn);
-        $end = Carbon::parse($clockOut);
-
-        $minutes = $start->diffInMinutes($end);
-
-        return round($minutes / 60, 2);
     }
 }

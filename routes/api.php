@@ -327,6 +327,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/cash-reconciliation/{branch_id}', [StaffController::class, 'cashReconciliationOverview']);
             Route::post('/cash-reconciliation/submit', [StaffController::class, 'submitCashReconciliation']);
             Route::get('/staff/earnings', [StaffPayoutController::class, 'staffEarnings']);
+            Route::get('/staff/salary-history', [StaffPayoutController::class, 'salaryHistory']);
             Route::apiResource('staff', StaffController::class);
             Route::post('staff-attendance/clock-in', [StaffAttendanceController::class, 'clockIn']);
             Route::post('staff-attendance/clock-out', [StaffAttendanceController::class, 'clockOut']);
@@ -426,10 +427,12 @@ Route::prefix('v1')->group(function () {
             Route::get('drivers/earnings', [DriverPayoutController::class, 'driverEarnings']);
             Route::post('drivers/stripe-onboard', [DriverPayoutController::class, 'stripeOnboard']);
 
-            // Staff Payouts & Salary (Weekly, Stripe Connect)
+            // Staff Payouts & Salary (Manual, approval-gated, Stripe Connect)
             Route::get('staff-payouts', [StaffPayoutController::class, 'index']);
             Route::post('staff-payouts/calculate', [StaffPayoutController::class, 'calculate']);
-            Route::post('staff-payouts/process-weekly', [StaffPayoutController::class, 'processWeekly']);
+            Route::get('staff-payouts/payroll-review', [StaffPayoutController::class, 'payrollReview']);
+            Route::post('staff-payouts/approve', [StaffPayoutController::class, 'approve']);
+            Route::post('staff-payouts/approve-batch', [StaffPayoutController::class, 'approveBatch']);
             Route::post('staff-payouts/{staff_payout}/process', [StaffPayoutController::class, 'process']);
             Route::post('staff-payouts/stripe-onboard', [StaffPayoutController::class, 'stripeOnboard']);
             Route::post('staff-payouts/stripe-status', [StaffPayoutController::class, 'stripeStatus']);
