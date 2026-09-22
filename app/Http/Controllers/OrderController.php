@@ -18,6 +18,7 @@ use App\Models\OrderItem;
 use App\Models\User;
 use App\Models\UserAddress;
 use App\Services\FirebaseNotificationService;
+use App\Services\InventoryStockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -194,11 +195,17 @@ class OrderController extends Controller
 
             $subtotal = 0;
             $orderItemsData = [];
+            $itemsToValidate = [];
 
             if ($cart && $cart->items->count() > 0) {
                 foreach ($cart->items as $item) {
                     $itemSubtotal = $item->total_price;
                     $subtotal += $itemSubtotal;
+
+                    $itemsToValidate[] = [
+                        'menu_item_id' => $item->menu_item_id,
+                        'quantity' => $item->quantity,
+                    ];
 
                     $optionsSummary = [];
                     if ($item->size) $optionsSummary[] = $item->size->name;
@@ -228,6 +235,11 @@ class OrderController extends Controller
                     $itemSubtotal = $unitPrice * $itemData['quantity'];
                     $subtotal += $itemSubtotal;
 
+                    $itemsToValidate[] = [
+                        'menu_item_id' => $menuItem->id,
+                        'quantity' => $itemData['quantity'],
+                    ];
+
                     $orderItemsData[] = [
                         'menu_item_id' => $menuItem->id,
                         'item_name' => $menuItem->name,
@@ -244,6 +256,11 @@ class OrderController extends Controller
                         'options_summary' => null,
                     ];
                 }
+            }
+
+            // Strictly validate branch stock before creating order
+            if (!empty($validated['branch_id'])) {
+                InventoryStockService::validateStockForItems((int) $validated['branch_id'], $itemsToValidate);
             }
 
             $vat = $subtotal > 0 ? 2.00 : 0.00;
@@ -494,200 +511,207 @@ class OrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        // Handle Manual Driver Assignment by Admin
-        if (!empty($validated['assigned_driver_id'])) {
-            $driverId = $validated['assigned_driver_id'];
-            $driver = Driver::with('user')->find($driverId);
+        return DB::transaction(function () use ($request, $order, $validated) {
+            // Handle Manual Driver Assignment by Admin
+            if (!empty($validated['assigned_driver_id'])) {
+                $driverId = $validated['assigned_driver_id'];
+                $driver = Driver::with('user')->find($driverId);
 
-            if ($driver) {
-                $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
-                    ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
-                    ->where('order_id', '!=', $order->id)
-                    ->exists();
+                if ($driver) {
+                    $hasActiveDelivery = Delivery::where('driver_id', $driver->id)
+                        ->whereIn('delivery_status', ['assigned', 'picked_up', 'on_the_way'])
+                        ->where('order_id', '!=', $order->id)
+                        ->exists();
 
-                if ($hasActiveDelivery) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Driver '{$driver->name}' is currently on an active delivery task and cannot be assigned.",
-                    ], 422);
+                    if ($hasActiveDelivery) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Driver '{$driver->name}' is currently on an active delivery task and cannot be assigned.",
+                        ], 422);
+                    }
                 }
             }
-        }
 
-        $order->update($validated);
+            $order->update($validated);
 
-        if (!empty($validated['assigned_driver_id'])) {
-            $driverId = $validated['assigned_driver_id'];
-            $driver = Driver::with('user')->find($driverId);
+            if (!empty($validated['assigned_driver_id'])) {
+                $driverId = $validated['assigned_driver_id'];
+                $driver = Driver::with('user')->find($driverId);
 
-            if ($driver) {
-                // Update driver status
-                $driver->update(['status' => 'on_delivery']);
+                if ($driver) {
+                    // Update driver status
+                    $driver->update(['status' => 'on_delivery']);
 
-                // Create or update delivery record
-                Delivery::updateOrCreate(
-                    ['order_id' => $order->id],
-                    [
-                        'driver_id' => $driver->id,
-                        'delivery_status' => 'assigned',
-                        'estimated_time' => $validated['estimated_delivery_time'] ?? now()->addMinutes(30),
-                    ]
-                );
+                    // Create or update delivery record
+                    Delivery::updateOrCreate(
+                        ['order_id' => $order->id],
+                        [
+                            'driver_id' => $driver->id,
+                            'delivery_status' => 'assigned',
+                            'estimated_time' => $validated['estimated_delivery_time'] ?? now()->addMinutes(30),
+                        ]
+                    );
 
-                // Notify Assigned Driver
-                try {
-                    $driverUserId = $driver->user_id;
-                    if ($driverUserId) {
-                        Notification::create([
-                            'user_id' => $driverUserId,
-                            'branch_id' => $order->branch_id,
-                            'title' => 'New Delivery Task Assigned',
-                            'message' => "You have been assigned to deliver order #{$order->order_number}.",
-                            'type' => 'delivery',
-                            'is_read' => false,
-                        ]);
+                    // Notify Assigned Driver
+                    try {
+                        $driverUserId = $driver->user_id;
+                        if ($driverUserId) {
+                            Notification::create([
+                                'user_id' => $driverUserId,
+                                'branch_id' => $order->branch_id,
+                                'title' => 'New Delivery Task Assigned',
+                                'message' => "You have been assigned to deliver order #{$order->order_number}.",
+                                'type' => 'delivery',
+                                'is_read' => false,
+                            ]);
+                        }
+
+                        $driverFcmToken = $driver->user?->fcm_token;
+                        if ($driverFcmToken) {
+                            FirebaseNotificationService::sendPushNotification(
+                                $driverFcmToken,
+                                "New Delivery Task Assigned!",
+                                "You have been assigned to deliver order #{$order->order_number} (£" . number_format((float)$order->delivery_fee, 2) . ").",
+                                ['type' => 'delivery_assigned', 'order_id' => (string) $order->id]
+                            );
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Driver Assignment Notification Error: ' . $e->getMessage());
                     }
 
-                    $driverFcmToken = $driver->user?->fcm_token;
-                    if ($driverFcmToken) {
-                        FirebaseNotificationService::sendPushNotification(
-                            $driverFcmToken,
-                            "New Delivery Task Assigned!",
-                            "You have been assigned to deliver order #{$order->order_number} (£" . number_format((float)$order->delivery_fee, 2) . ").",
-                            ['type' => 'delivery_assigned', 'order_id' => (string) $order->id]
-                        );
+                    // Notify Customer
+                    if ($order->user_id) {
+                        try {
+                            Notification::create([
+                                'user_id' => $order->user_id,
+                                'branch_id' => $order->branch_id,
+                                'title' => 'Driver Assigned to Your Order',
+                                'message' => "Driver '{$driver->name}' has been assigned to deliver your order #{$order->order_number}.",
+                                'type' => 'order',
+                                'is_read' => false,
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('Customer Driver Assignment Notification Error: ' . $e->getMessage());
+                        }
                     }
-                } catch (\Exception $e) {
-                    Log::error('Driver Assignment Notification Error: ' . $e->getMessage());
+
+                    // Broadcast Reverb WebSocket event to dismiss card on other drivers' screens
+                    try {
+                        broadcast(new OrderAcceptedBroadcastEvent($order, $driver));
+                    } catch (\Exception $e) {
+                        Log::error('Admin Order Assigned Broadcast Error: ' . $e->getMessage());
+                    }
+                }
+            }
+
+            // Update linked KitchenOrder status and dispatch notifications on status change
+            if (isset($validated['order_status'])) {
+                $newStatus = $validated['order_status'];
+
+                if ($newStatus === 'preparing') {
+                    $order->kitchenOrders()->update(['status' => 'preparing', 'started_at' => now()]);
+                } elseif ($newStatus === 'ready') {
+                    $order->kitchenOrders()->update(['status' => 'ready', 'completed_at' => now()]);
+                } elseif (in_array($newStatus, ['completed', 'cancelled'])) {
+                    $order->kitchenOrders()->update(['status' => 'served']);
                 }
 
-                // Notify Customer
+                // Automatic Stock Deduction when Order Transitions to Completed
+                if ($newStatus === 'completed') {
+                    InventoryStockService::deductStockForOrder($order, $request->user()?->id);
+                }
+
+                // Dispatch to Drivers ONLY when Branch approves and status becomes 'preparing' or 'ready'
+                if (in_array($newStatus, ['preparing', 'ready', 'accepted']) && $order->order_type === 'delivery' && empty($order->assigned_driver_id) && $order->branch_id) {
+                    try {
+                        // 1. Reverb WebSocket Broadcast to Driver Channel (Upcoming Request popup)
+                        broadcast(new NewDeliveryBroadcastEvent($order));
+
+                        // 2. FCM Push Notification to Online & Available Drivers of this Branch
+                        $onlineDrivers = User::whereHas('driver', function ($q) use ($order) {
+                            $q->where('branch_id', $order->branch_id)
+                              ->where('kyc_status', 'approved')
+                              ->where('is_online', true)
+                              ->where('status', 'available');
+                        })->get();
+
+                        $onlineDriverTokens = $onlineDrivers->whereNotNull('fcm_token')->pluck('fcm_token')->toArray();
+
+                        if (!empty($onlineDriverTokens)) {
+                            FirebaseNotificationService::sendPushNotification(
+                                $onlineDriverTokens,
+                                "New Delivery Task Available!",
+                                "Order #{$order->order_number} is {$newStatus} and available for delivery (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
+                                [
+                                    'type' => 'new_delivery',
+                                    'order_id' => (string) $order->id,
+                                    'order_number' => $order->order_number,
+                                ]
+                            );
+                        }
+
+                        // 3. In-App Notification to Drivers
+                        foreach ($onlineDrivers as $driverUser) {
+                            Notification::create([
+                                'user_id' => $driverUser->id,
+                                'branch_id' => $order->branch_id,
+                                'title' => 'New Delivery Request Available',
+                                'message' => "Order #{$order->order_number} is {$newStatus} and available for delivery.",
+                                'type' => 'delivery',
+                                'is_read' => false,
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Driver Delivery Dispatch on Preparing/Ready Error: ' . $e->getMessage());
+                    }
+                }
+
+                // Customer Notifications on Status Transitions
                 if ($order->user_id) {
                     try {
-                        Notification::create([
-                            'user_id' => $order->user_id,
-                            'branch_id' => $order->branch_id,
-                            'title' => 'Driver Assigned to Your Order',
-                            'message' => "Driver '{$driver->name}' has been assigned to deliver your order #{$order->order_number}.",
-                            'type' => 'order',
-                            'is_read' => false,
-                        ]);
+                        if (in_array($newStatus, ['accepted', 'preparing'])) {
+                            Notification::create([
+                                'user_id' => $order->user_id,
+                                'branch_id' => $order->branch_id,
+                                'title' => 'Order Approved & Preparing',
+                                'message' => "Your order #{$order->order_number} has been approved and is now being prepared in the kitchen.",
+                                'type' => 'order',
+                                'is_read' => false,
+                            ]);
+                        } elseif ($newStatus === 'cancelled') {
+                            Notification::create([
+                                'user_id' => $order->user_id,
+                                'branch_id' => $order->branch_id,
+                                'title' => 'Order Cancelled',
+                                'message' => "Your order #{$order->order_number} has been cancelled.",
+                                'type' => 'order',
+                                'is_read' => false,
+                            ]);
+                        }
                     } catch (\Exception $e) {
-                        Log::error('Customer Driver Assignment Notification Error: ' . $e->getMessage());
+                        Log::error('Customer Status Transition Notification Error: ' . $e->getMessage());
                     }
                 }
+            }
 
-                // Broadcast Reverb WebSocket event to dismiss card on other drivers' screens
+            // Broadcast real-time order update to Branch Admin / Next.js Kanban Board
+            if ($order->branch_id) {
                 try {
-                    broadcast(new OrderAcceptedBroadcastEvent($order, $driver));
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'updated'));
                 } catch (\Exception $e) {
-                    Log::error('Admin Order Assigned Broadcast Error: ' . $e->getMessage());
-                }
-            }
-        }
-
-        // Update linked KitchenOrder status and dispatch notifications on status change
-        if (isset($validated['order_status'])) {
-            $newStatus = $validated['order_status'];
-
-            if ($newStatus === 'preparing') {
-                $order->kitchenOrders()->update(['status' => 'preparing', 'started_at' => now()]);
-            } elseif ($newStatus === 'ready') {
-                $order->kitchenOrders()->update(['status' => 'ready', 'completed_at' => now()]);
-            } elseif (in_array($newStatus, ['completed', 'cancelled'])) {
-                $order->kitchenOrders()->update(['status' => 'served']);
-            }
-
-            // Dispatch to Drivers ONLY when Branch approves and status becomes 'preparing' or 'ready'
-            if (in_array($newStatus, ['preparing', 'ready', 'accepted']) && $order->order_type === 'delivery' && empty($order->assigned_driver_id) && $order->branch_id) {
-                try {
-                    // 1. Reverb WebSocket Broadcast to Driver Channel (Upcoming Request popup)
-                    broadcast(new NewDeliveryBroadcastEvent($order));
-
-                    // 2. FCM Push Notification to Online & Available Drivers of this Branch
-                    $onlineDrivers = User::whereHas('driver', function ($q) use ($order) {
-                        $q->where('branch_id', $order->branch_id)
-                          ->where('kyc_status', 'approved')
-                          ->where('is_online', true)
-                          ->where('status', 'available');
-                    })->get();
-
-                    $onlineDriverTokens = $onlineDrivers->whereNotNull('fcm_token')->pluck('fcm_token')->toArray();
-
-                    if (!empty($onlineDriverTokens)) {
-                        FirebaseNotificationService::sendPushNotification(
-                            $onlineDriverTokens,
-                            "New Delivery Task Available!",
-                            "Order #{$order->order_number} is {$newStatus} and available for delivery (£" . number_format((float)$order->delivery_fee, 2) . "). Tap to accept!",
-                            [
-                                'type' => 'new_delivery',
-                                'order_id' => (string) $order->id,
-                                'order_number' => $order->order_number,
-                            ]
-                        );
-                    }
-
-                    // 3. In-App Notification to Drivers
-                    foreach ($onlineDrivers as $driverUser) {
-                        Notification::create([
-                            'user_id' => $driverUser->id,
-                            'branch_id' => $order->branch_id,
-                            'title' => 'New Delivery Request Available',
-                            'message' => "Order #{$order->order_number} is {$newStatus} and available for delivery.",
-                            'type' => 'delivery',
-                            'is_read' => false,
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Driver Delivery Dispatch on Preparing/Ready Error: ' . $e->getMessage());
+                    Log::error('Order Update Broadcast Error: ' . $e->getMessage());
                 }
             }
 
-            // Customer Notifications on Status Transitions
-            if ($order->user_id) {
-                try {
-                    if (in_array($newStatus, ['accepted', 'preparing'])) {
-                        Notification::create([
-                            'user_id' => $order->user_id,
-                            'branch_id' => $order->branch_id,
-                            'title' => 'Order Approved & Preparing',
-                            'message' => "Your order #{$order->order_number} has been approved and is now being prepared in the kitchen.",
-                            'type' => 'order',
-                            'is_read' => false,
-                        ]);
-                    } elseif ($newStatus === 'cancelled') {
-                        Notification::create([
-                            'user_id' => $order->user_id,
-                            'branch_id' => $order->branch_id,
-                            'title' => 'Order Cancelled',
-                            'message' => "Your order #{$order->order_number} has been cancelled.",
-                            'type' => 'order',
-                            'is_read' => false,
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Customer Status Transition Notification Error: ' . $e->getMessage());
-                }
-            }
-        }
-
-        // Broadcast real-time order update to Branch Admin / Next.js Kanban Board
-        if ($order->branch_id) {
-            try {
-                broadcast(new OrderStatusUpdatedBroadcastEvent($order, 'updated'));
-            } catch (\Exception $e) {
-                Log::error('Order Update Broadcast Error: ' . $e->getMessage());
-            }
-        }
-
-        return response()->json($order->load([
-            'items.menuItem',
-            'items.size',
-            'items.cookingPreference',
-            'items.spiceLevel',
-            'assignedStaff',
-            'assignedDriver',
-        ]));
+            return response()->json($order->load([
+                'items.menuItem',
+                'items.size',
+                'items.cookingPreference',
+                'items.spiceLevel',
+                'assignedStaff',
+                'assignedDriver',
+            ]));
+        });
     }
 
     /**
@@ -754,6 +778,10 @@ class OrderController extends Controller
                 'order_status' => $nextStatus,
                 'estimated_delivery_time' => $validated['estimated_delivery_time'] ?? $order->estimated_delivery_time,
             ]);
+
+            if ($nextStatus === 'completed') {
+                InventoryStockService::deductStockForOrder($order);
+            }
 
             // 2. Update driver status
             $driver->update(['status' => 'on_delivery']);

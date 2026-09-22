@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pacino's Admin - Inventory, Conversions & Stock Hub</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            orange: '#f97316',
+                            orangeHover: '#ea580c',
+                            dark: '#0c1017',
+                            card: '#141a24',
+                            border: '#1f2937',
+                            input: '#0f141d',
+                            accent: '#f59e0b'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        heading: ['"Outfit"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0b0f17;
+            color: #d1d5db;
+        }
+        .font-heading {
+            font-family: 'Outfit', sans-serif;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0c1017;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2937;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+        .pacinos-card {
+            background: #131822;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+        }
+        .pacinos-input {
+            background: #0d121b;
+            border: 1px solid #1e2634;
+            color: #f3f4f6;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.875rem;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .pacinos-input:focus {
+            outline: none;
+            border-color: #f97316;
+            box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+        }
+        .pacinos-btn-primary {
+            background: #ea580c;
+            color: #ffffff;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 9px 18px;
+            font-size: 0.875rem;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .pacinos-btn-primary:hover {
+            background: #f97316;
+        }
+        .upload-dropzone {
+            border: 1px dashed #263143;
+            background: #0e131d;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: border 0.2s ease;
+        }
+        .upload-dropzone:hover {
+            border-color: #f97316;
+        }
+        .nav-item.active {
+            color: #f97316;
+            background: rgba(249, 115, 22, 0.1);
+            border-left: 3px solid #f97316;
+        }
+        .badge-purchase { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-sale { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-waste { background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
+        .badge-adjustment { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+        .badge-restock { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .badge-transfer_in { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .badge-transfer_out { background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .badge-conversion_in { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .badge-conversion_out { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    </style>
+</head>
+<body class="min-h-screen bg-[#0a0e16] text-slate-300 antialiased flex selection:bg-orange-500 selection:text-white">
+
+    <!-- Left Sidebar -->
+    <aside class="w-64 bg-[#0d121a] border-r border-[#1a2230] flex-shrink-0 min-h-screen flex flex-col justify-between hidden md:flex">
+        <div>
+            <!-- Brand Logo -->
+            <div class="px-6 py-5 flex items-center gap-3 border-b border-[#1a2230]">
+                <div class="h-9 w-9 rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-orange-500/30">
+                    <i class="fa-solid fa-fire text-sm"></i>
+                </div>
+                <div>
+                    <h1 class="font-heading font-extrabold text-white text-base tracking-wider uppercase">PACINO'S</h1>
+                    <span class="text-[10px] text-orange-400 font-semibold uppercase tracking-widest">Admin HQ Portal</span>
+                </div>
+            </div>
+
+            <!-- Navigation Sections -->
+            <div class="py-4 space-y-1 text-sm font-medium text-slate-400 px-3">
+                <div class="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Core Dashboard</div>
+                
+                <a href="#" onclick="showSection('stock-overview')" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-stock-overview">
+                    <i class="fa-solid fa-chart-pie w-4 text-center"></i>
+                    <span>Dashboard & Stock</span>
+                </a>
+
+                <div class="pt-4 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                    <span>Inventory Module</span>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-orange-500"></i>
+                </div>
+
+                <a href="#" onclick="showSection('stock-overview')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item active" id="nav-inventory">
+                    <i class="fa-solid fa-boxes-stacked w-4 text-center text-orange-500"></i>
+                    <span>Branch Inventory</span>
+                </a>
+
+                <a href="#" onclick="showSection('items-conversions')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-items-conversions">
+                    <i class="fa-solid fa-layer-group w-4 text-center text-orange-400"></i>
+                    <span>Items Conversions</span>
+                </a>
+
+                <a href="#" onclick="showSection('add-stock')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-add-stock">
+                    <i class="fa-solid fa-plus-circle w-4 text-center text-amber-400"></i>
+                    <span>+ Add Stock & Convert</span>
+                </a>
+
+                <a href="#" onclick="showSection('add-menu-item')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-add-menu-item">
+                    <i class="fa-solid fa-utensils w-4 text-center text-emerald-400"></i>
+                    <span>+ Add Menu Item Recipe</span>
+                </a>
+
+                <a href="#" onclick="showSection('suppliers')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-suppliers">
+                    <i class="fa-solid fa-handshake w-4 text-center text-blue-400"></i>
+                    <span>Suppliers & Vendors</span>
+                </a>
+
+                <a href="#" onclick="showSection('transaction-logs')" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors nav-item" id="nav-transaction-logs">
+                    <i class="fa-solid fa-clock-rotate-left w-4 text-center text-purple-400"></i>
+                    <span>Audit & Stock Logs</span>
+                </a>
+
+                <div class="pt-4 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Operations</div>
+
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors opacity-70">
+                    <i class="fa-solid fa-cart-shopping w-4 text-center"></i>
+                    <span>Orders & POS</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:text-white hover:bg-slate-800/60 transition-colors opacity-70">
+                    <i class="fa-solid fa-truck-fast w-4 text-center"></i>
+                    <span>Deliveries & Fleet</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Sidebar Footer / User Profile -->
+        <div class="p-4 border-t border-[#1a2230]">
+            <div class="flex items-center gap-3">
+                <div class="h-9 w-9 rounded-full bg-orange-600/30 border border-orange-500/50 flex items-center justify-center text-orange-400 font-bold text-xs">
+                    HA
+                </div>
+                <div class="flex-1 overflow-hidden">
+                    <h4 class="text-xs font-bold text-white truncate">HQ Administrator</h4>
+                    <span class="text-[10px] text-slate-400 block truncate">admin@pacinos.uk</span>
+                </div>
+                <a href="#" class="text-slate-400 hover:text-red-400 text-xs">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col min-w-0 min-h-screen bg-[#0a0e16]">
+        
+        <!-- Top Header Navigation -->
+        <header class="bg-[#0e131d] border-b border-[#1b2332] px-6 py-3.5 sticky top-0 z-30 flex flex-col sm:flex-row items-center justify-between gap-4">
+            
+            <!-- Breadcrumbs -->
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-400">
+                <span class="text-orange-500 font-bold">Pacinos HQ</span>
+                <i class="fa-solid fa-chevron-right text-[10px] text-slate-600"></i>
+                <span id="breadcrumbSection" class="text-slate-200">Inventory Management</span>
+            </div>
+
+            <!-- Global Branch & Category Selectors -->
+            <div class="flex items-center gap-3">
+                <div class="flex items-center bg-[#131824] border border-[#222d40] rounded-lg px-3 py-1.5 text-xs">
+                    <span class="text-slate-400 font-medium mr-2">Branch:</span>
+                    <select id="globalBranchSelect" onchange="handleBranchChange(this.value)" class="bg-transparent text-white font-bold focus:outline-none cursor-pointer">
+                        <option value="1" class="bg-[#131824]">Central London (Main Kitchen)</option>
+                        <option value="2" class="bg-[#131824]">Manchester Northern Quarter</option>
+                        <option value="3" class="bg-[#131824]">Birmingham Bullring</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center bg-[#131824] border border-[#222d40] rounded-lg px-3 py-1.5 text-xs">
+                    <span class="text-slate-400 font-medium mr-2">Category:</span>
+                    <select id="globalCategoryFilter" onchange="handleCategoryFilter(this.value)" class="bg-transparent text-white font-bold focus:outline-none cursor-pointer">
+                        <option value="all" class="bg-[#131824]">All Categories</option>
+                        <option value="Raw Meat" class="bg-[#131824]">Raw Meat & Poultry</option>
+                        <option value="Bakery" class="bg-[#131824]">Bakery & Buns</option>
+                        <option value="Dairy" class="bg-[#131824]">Dairy & Cheese</option>
+                        <option value="Produce" class="bg-[#131824]">Fresh Produce</option>
+                        <option value="Prepared" class="bg-[#131824]">Prepared & Prepped Items</option>
+                    </select>
+                </div>
+
+                <!-- Notification Bell -->
+                <button class="h-8 w-8 rounded-lg bg-[#131824] border border-[#222d40] flex items-center justify-center text-slate-400 hover:text-white relative">
+                    <i class="fa-regular fa-bell text-xs"></i>
+                    <span class="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-orange-500"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Body Content -->
+        <main class="p-6 max-w-7xl w-full mx-auto space-y-6">
+
+            <!-- SECTION 1: ITEMS & CONVERSIONS (Matching Screenshot 1: /admin/inventory/items-conversions) -->
+            <section id="section-items-conversions" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h2 class="font-heading font-extrabold text-white text-xl">Inventory Items & Conversions</h2>
+                        <p class="text-xs text-slate-400">Configure raw materials, prepared items, and yield conversion ratios.</p>
+                    </div>
+                </div>
+
+                <!-- Box 1: Add new raw material -->
+                <div class="pacinos-card p-6 space-y-5">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-cube text-orange-500"></i>
+                        <span>Add new raw material</span>
+                    </h3>
+
+                    <!-- Image Upload -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1.5">Upload Image</label>
+                        <div class="upload-dropzone">
+                            <i class="fa-solid fa-cloud-arrow-up text-xl text-orange-500 mb-1"></i>
+                            <div class="text-xs font-bold text-slate-200">Drag & drop or <span class="text-orange-400 underline">Choose File</span></div>
+                            <div class="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WEBP up to 50MB</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 1 Form Fields -->
+                    <form id="rawMaterialForm" onsubmit="handleCreateRawMaterial(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                            <div class="md:col-span-2">
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Name</label>
+                                <input type="text" id="rawName" required placeholder="e.g. Minced Beef" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">SKU (optional)</label>
+                                <input type="text" id="rawSku" placeholder="e.g. RM-BEEF-001" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Unit</label>
+                                <select id="rawUnit" class="pacinos-input">
+                                    <option value="kg">kg</option>
+                                    <option value="liters">liters</option>
+                                    <option value="pcs">pcs</option>
+                                    <option value="packs">packs</option>
+                                    <option value="bottles">bottles</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Initial Quantity</label>
+                                <input type="number" id="rawQty" step="0.01" value="100" required class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Purchase Price (£)</label>
+                                <input type="number" id="rawPrice" step="0.01" value="4.50" required class="pacinos-input">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Minimum Stock</label>
+                                <input type="number" id="rawMinStock" step="0.01" value="10" required class="pacinos-input">
+                            </div>
+                            <div class="md:col-span-5">
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Description</label>
+                                <textarea id="rawDescription" rows="2" placeholder="e.g. Fresh minced beef, 80/20 blend" class="pacinos-input"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" class="pacinos-btn-primary">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>+ Add raw material</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Box 2: Add new prepared item (with conversion) -->
+                <div class="pacinos-card p-6 space-y-5">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-arrows-split-up-and-left text-orange-500"></i>
+                        <span>Add new prepared item (with conversion)</span>
+                    </h3>
+
+                    <!-- Image Upload -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1.5">Upload Image</label>
+                        <div class="upload-dropzone">
+                            <i class="fa-solid fa-cloud-arrow-up text-xl text-orange-500 mb-1"></i>
+                            <div class="text-xs font-bold text-slate-200">Drag & drop or <span class="text-orange-400 underline">Choose File</span></div>
+                            <div class="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WEBP up to 50MB</div>
+                        </div>
+                    </div>
+
+                    <form id="preparedItemForm" onsubmit="handleCreatePreparedItem(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Name</label>
+                                <input type="text" id="prepName" required placeholder="e.g. Burger Patties" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Made from</label>
+                                <select id="prepMadeFrom" required class="pacinos-input">
+                                    <!-- Populated dynamically with raw materials -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Yield Unit</label>
+                                <select id="prepYieldUnit" class="pacinos-input">
+                                    <option value="pcs">pcs</option>
+                                    <option value="portions">portions</option>
+                                    <option value="kg">kg</option>
+                                    <option value="packs">packs</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Pack size (<span id="prepPackUnitLabel">kg</span>)</label>
+                                <input type="number" id="prepPackSize" step="0.01" value="7" required class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Yields qty (<span id="prepYieldUnitLabel">pcs</span>)</label>
+                                <input type="number" id="prepYieldQty" step="0.01" value="50" required class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Purchase Price (£)</label>
+                                <input type="number" id="prepPurchasePrice" step="0.01" value="1.20" required class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Selling Price (£)</label>
+                                <input type="number" id="prepSellingPrice" step="0.01" value="2.50" required class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Minimum Stock</label>
+                                <input type="number" id="prepMinStock" step="0.01" value="20" required class="pacinos-input">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Description</label>
+                            <textarea id="prepDescription" rows="2" placeholder="e.g. 4oz beef patties made from fresh minced beef" class="pacinos-input"></textarea>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" class="pacinos-btn-primary">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>+ Add prepared item</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+
+            <!-- SECTION 2: ADD STOCK & CONVERT (Matching Screenshot 2: /admin/inventory/add-stock) -->
+            <section id="section-add-stock" class="space-y-6 hidden">
+                <div>
+                    <h2 class="font-heading font-extrabold text-white text-xl">Add stock</h2>
+                    <p class="text-xs text-slate-400">Log a new raw material purchase, convert it into prepared items, then distribute to branches.</p>
+                </div>
+
+                <!-- Box 1: Stock raw material -->
+                <div class="pacinos-card p-6 space-y-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-dolly text-orange-500"></i>
+                        <span>Stock raw material</span>
+                    </h3>
+
+                    <form id="stockRawMaterialForm" onsubmit="handleStockRawMaterial(event)" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Raw material</label>
+                            <select id="stockRawSelect" required class="pacinos-input">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Supplier / Vendor</label>
+                            <select id="stockSupplierSelect" class="pacinos-input">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Qty purchased</label>
+                            <input type="number" id="stockRawQty" step="0.01" placeholder="e.g. 7" required class="pacinos-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Notes / Invoice</label>
+                            <input type="text" id="stockRawNotes" placeholder="Optional notes / invoice ref" class="pacinos-input">
+                        </div>
+                        <div>
+                            <button type="submit" class="pacinos-btn-primary w-full">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>+ Add stock</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Box 2: Convert to prepared item -->
+                <div class="pacinos-card p-6 space-y-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-orange-500"></i>
+                            <span>Convert to prepared item</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Ratios come from the "Items and conversions" page — edit them there any time.</p>
+                    </div>
+
+                    <form id="convertPreparedForm" onsubmit="handleExecuteConversion(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Prepared item</label>
+                            <select id="convertPreparedSelect" onchange="updateYieldPreview()" required class="pacinos-input">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Packs to convert</label>
+                            <input type="number" id="convertPacksQty" oninput="updateYieldPreview()" step="1" min="1" value="1" required class="pacinos-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Yield preview</label>
+                            <div id="convertYieldPreview" class="pacinos-input bg-[#0b0e14] text-orange-400 font-medium truncate flex items-center">
+                                Select a prepared item to preview yield
+                            </div>
+                        </div>
+                        <div>
+                            <button type="submit" class="pacinos-btn-primary w-full bg-orange-600 hover:bg-orange-500">
+                                <i class="fa-solid fa-arrows-rotate text-xs"></i>
+                                <span>Convert now</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Box 3: Distribute to branch -->
+                <div class="pacinos-card p-6 space-y-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-truck-ramp-box text-orange-500"></i>
+                        <span>Distribute to branch</span>
+                    </h3>
+
+                    <form id="distributeBranchForm" onsubmit="handleDistributeToBranch(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Item</label>
+                            <select id="distributeItemSelect" required class="pacinos-input">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Branch</label>
+                            <select id="distributeBranchSelect" required class="pacinos-input">
+                                <option value="2">Manchester Northern Quarter</option>
+                                <option value="3">Birmingham Bullring</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Qty to send</label>
+                            <input type="number" id="distributeQty" step="0.01" placeholder="e.g. 10" required class="pacinos-input">
+                        </div>
+                        <div>
+                            <button type="submit" class="pacinos-btn-primary w-full">
+                                <i class="fa-solid fa-paper-plane text-xs"></i>
+                                <span>Distribute</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+
+            <!-- SECTION 3: ADD MENU ITEM (Matching Screenshot 3: /admin/inventory/add-menu-item) -->
+            <section id="section-add-menu-item" class="space-y-6 hidden">
+                <div>
+                    <h2 class="font-heading font-extrabold text-white text-xl">Add new menu item</h2>
+                    <p class="text-xs text-slate-400">Configure item details and its yield conversion recipe.</p>
+                </div>
+
+                <form id="menuItemRecipeForm" onsubmit="handleCreateMenuItemRecipe(event)" class="pacinos-card p-6 space-y-5">
+                    
+                    <!-- Image Upload -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1.5">Upload Image</label>
+                        <div class="upload-dropzone">
+                            <i class="fa-solid fa-cloud-arrow-up text-xl text-orange-500 mb-1"></i>
+                            <div class="text-xs font-bold text-slate-200">Drag & drop or <span class="text-orange-400 underline">Choose File</span></div>
+                            <div class="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WEBP up to 50MB</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 1: Branch, Category, SKU -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Branch</label>
+                            <select id="menuBranch" class="pacinos-input">
+                                <option value="1">Branch #1 (Central London)</option>
+                                <option value="2">Branch #2 (Manchester)</option>
+                                <option value="3">Branch #3 (Birmingham)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Category</label>
+                            <select id="menuCategory" class="pacinos-input">
+                                <option value="1">Category #1 (Burgers & Grills)</option>
+                                <option value="2">Category #2 (Pizza & Sides)</option>
+                                <option value="3">Category #3 (Beverages)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">SKU (optional)</label>
+                            <input type="text" id="menuSku" placeholder="e.g. PR-PATTY-001" class="pacinos-input">
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Name, Prices, Min Stock -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="md:col-span-1">
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Item name</label>
+                            <input type="text" id="menuName" required placeholder="e.g. Pacino's Classic Cheeseburger" class="pacinos-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Purchase Price (£)</label>
+                            <input type="number" id="menuPurchasePrice" step="0.01" value="1.20" class="pacinos-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Selling Price (£)</label>
+                            <input type="number" id="menuSellingPrice" step="0.01" value="8.50" required class="pacinos-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Min Stock</label>
+                            <input type="number" id="menuMinStock" step="0.01" value="10" class="pacinos-input">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-[11px] font-semibold text-slate-400 block mb-1">Description</label>
+                        <textarea id="menuDescription" rows="2" placeholder="Write description..." class="pacinos-input"></textarea>
+                    </div>
+
+                    <!-- Section: Recipe & Conversion Ratios -->
+                    <div class="pt-4 border-t border-[#1e2634] space-y-3">
+                        <h4 class="text-xs font-bold text-white uppercase tracking-wider text-orange-400">Recipe & Conversion Ratios</h4>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Made From</label>
+                                <select id="menuMadeFrom" class="pacinos-input">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Pack Size</label>
+                                <input type="number" id="menuPackSize" step="0.01" value="7" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Pack Unit</label>
+                                <input type="text" id="menuPackUnit" value="kg" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Yield Qty</label>
+                                <input type="number" id="menuYieldQty" step="0.01" value="50" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Yield Unit</label>
+                                <input type="text" id="menuYieldUnit" value="pcs" class="pacinos-input">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="pt-4 flex items-center justify-end gap-3">
+                        <button type="button" onclick="showSection('stock-overview')" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-lg">
+                            Cancel
+                        </button>
+                        <button type="submit" class="pacinos-btn-primary">
+                            <span>Save menu item</span>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+
+            <!-- SECTION 4: MAIN STOCK OVERVIEW & TABLE -->
+            <section id="section-stock-overview" class="space-y-6">
+                
+                <!-- Low Stock Threshold Alert Banner -->
+                <div id="lowStockBanner" class="hidden pacinos-card border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-red-950/20 to-[#131822] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="h-9 w-9 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-base">
+                            <i class="fa-solid fa-triangle-exclamation animate-bounce"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold text-white">Low Stock Threshold Warning</h4>
+                            <p id="lowStockSummaryText" class="text-[11px] text-amber-200/80">3 items are running below minimum safety threshold.</p>
+                        </div>
+                    </div>
+                    <button onclick="showSection('add-stock')" class="pacinos-btn-primary text-xs py-1.5 px-3">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Restock / Convert Now</span>
+                    </button>
+                </div>
+
+                <!-- KPI Metrics Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="pacinos-card p-4">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Branch Items</span>
+                        <div id="kpiTotalItems" class="text-2xl font-extrabold text-white mt-1 font-heading">0</div>
+                        <span class="text-[10px] text-emerald-400 mt-1 block"><i class="fa-solid fa-circle-check mr-1"></i>Isolated by branch</span>
+                    </div>
+                    <div class="pacinos-card p-4">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Stock Valuation</span>
+                        <div id="kpiStockValue" class="text-2xl font-extrabold text-amber-400 mt-1 font-heading">£0.00</div>
+                        <span class="text-[10px] text-slate-400 mt-1 block">Based on purchase cost</span>
+                    </div>
+                    <div class="pacinos-card p-4">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Low Stock Items</span>
+                        <div id="kpiLowStock" class="text-2xl font-extrabold text-amber-500 mt-1 font-heading">0</div>
+                        <span class="text-[10px] text-amber-400 mt-1 block">Requires attention</span>
+                    </div>
+                    <div class="pacinos-card p-4">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Out of Stock</span>
+                        <div id="kpiOutOfStock" class="text-2xl font-extrabold text-red-500 mt-1 font-heading">0</div>
+                        <span class="text-[10px] text-red-400 mt-1 block">Zero inventory available</span>
+                    </div>
+                </div>
+
+                <!-- Table Controls & Search -->
+                <div class="pacinos-card p-4 flex flex-col md:flex-row items-center justify-between gap-3">
+                    <div class="relative w-full md:w-80">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-xs text-slate-500"></i>
+                        <input type="text" id="tableSearchInput" oninput="handleTableSearch(this.value)" placeholder="Search by item name or SKU..." class="pacinos-input pl-9 text-xs">
+                    </div>
+
+                    <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                        <select id="statusFilterSelect" onchange="handleStatusFilter(this.value)" class="pacinos-input text-xs w-auto">
+                            <option value="all">All Statuses</option>
+                            <option value="in_stock">In Stock</option>
+                            <option value="low_stock">Low Stock</option>
+                            <option value="out_of_stock">Out of Stock</option>
+                        </select>
+                        <button onclick="exportStockCSV()" class="px-3 py-2 rounded-lg bg-[#1a2230] hover:bg-[#253042] text-xs font-semibold text-white border border-[#2b374d] flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-csv text-emerald-400"></i>
+                            <span>Export CSV</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Inventory Data Table -->
+                <div class="pacinos-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-[#0e131d] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1f2937]">
+                                <tr>
+                                    <th class="py-3 px-4">Item Name & SKU</th>
+                                    <th class="py-3 px-4">Type</th>
+                                    <th class="py-3 px-4">Category</th>
+                                    <th class="py-3 px-4">Current Stock</th>
+                                    <th class="py-3 px-4">Min. Threshold</th>
+                                    <th class="py-3 px-4">Cost / Selling</th>
+                                    <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryTableBody" class="divide-y divide-[#18202d] text-slate-200">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 5: AUDIT & STOCK TRANSACTION LOGS -->
+            <section id="section-transaction-logs" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h2 class="font-heading font-extrabold text-white text-xl">Stock Transaction & Audit Logs</h2>
+                        <p class="text-xs text-slate-400">Complete, tamper-evident audit history of all inventory movements and sales.</p>
+                    </div>
+                </div>
+
+            <!-- SECTION 5: SUPPLIERS & VENDORS MANAGEMENT -->
+            <section id="section-suppliers" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h2 class="font-heading font-extrabold text-white text-xl">Suppliers & Vendor Management</h2>
+                        <p class="text-xs text-slate-400">Manage approved food vendors, contact info, and stock delivery history.</p>
+                    </div>
+                </div>
+
+                <!-- Add New Supplier Card -->
+                <div class="pacinos-card p-6 space-y-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-user-plus text-orange-500"></i>
+                        <span>Add new supplier / vendor</span>
+                    </h3>
+
+                    <form id="supplierForm" onsubmit="handleCreateSupplier(event)" class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Supplier / Company Name</label>
+                                <input type="text" id="suppName" required placeholder="e.g. London Meat Supplies Ltd" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Contact Phone</label>
+                                <input type="text" id="suppPhone" placeholder="e.g. +44 20 7946 0991" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Email Address</label>
+                                <input type="email" id="suppEmail" placeholder="e.g. orders@londonmeats.co.uk" class="pacinos-input">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 block mb-1">Address / Location</label>
+                                <input type="text" id="suppAddress" placeholder="e.g. Smithfield Market, London" class="pacinos-input">
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex justify-end">
+                            <button type="submit" class="pacinos-btn-primary">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>+ Save Supplier</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Suppliers List Table -->
+                <div class="pacinos-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-[#0e131d] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1f2937]">
+                                <tr>
+                                    <th class="py-3 px-4">Supplier Name</th>
+                                    <th class="py-3 px-4">Branch</th>
+                                    <th class="py-3 px-4">Phone</th>
+                                    <th class="py-3 px-4">Email</th>
+                                    <th class="py-3 px-4">Address</th>
+                                    <th class="py-3 px-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="suppliersTableBody" class="divide-y divide-[#18202d] text-slate-200">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 6: AUDIT & STOCK TRANSACTION LOGS -->
+            <section id="section-transaction-logs" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h2 class="font-heading font-extrabold text-white text-xl">Stock Transaction & Audit Logs</h2>
+                        <p class="text-xs text-slate-400">Complete, tamper-evident audit history of all inventory movements, purchases, and sales.</p>
+                    </div>
+                </div>
+
+                <div class="pacinos-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-[#0e131d] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1f2937]">
+                                <tr>
+                                    <th class="py-3 px-4">Date & Time</th>
+                                    <th class="py-3 px-4">Item Name</th>
+                                    <th class="py-3 px-4">Transaction Type</th>
+                                    <th class="py-3 px-4">Quantity Changed</th>
+                                    <th class="py-3 px-4">Supplier / Vendor</th>
+                                    <th class="py-3 px-4">Branch</th>
+                                    <th class="py-3 px-4">Reference / Notes</th>
+                                    <th class="py-3 px-4">Recorded By</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactionTableBody" class="divide-y divide-[#18202d] text-slate-200">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Toast Notification Element -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Interactive JavaScript Engine -->
+    <script>
+        // State Store
+        let currentBranchId = '1';
+        let currentCategoryFilter = 'all';
+        let currentStatusFilter = 'all';
+        let searchKeyword = '';
+
+        // Initial Suppliers Sample Data
+        let suppliers = [
+            { id: 1, branch_id: 1, name: 'Smithfield Meat Wholesalers', phone: '+44 20 7946 0991', email: 'orders@smithfieldmeats.co.uk', address: '42 Smithfield Market, London EC1A 9LQ' },
+            { id: 2, branch_id: 1, name: 'Fresh Fields Dairy Co.', phone: '+44 20 7946 0882', email: 'sales@freshfieldsdairy.co.uk', address: '18 Dairy Lane, London SE1 7PB' },
+            { id: 3, branch_id: 2, name: 'Northern Produce Hub', phone: '+44 161 746 0331', email: 'supply@northernproduce.co.uk', address: '9 Ancoats St, Manchester M4 5BD' }
+        ];
+
+        // Initial Sample Data synced with backend schema
+        let inventoryItems = [
+            { id: 1, branch_id: 1, type: 'raw_material', name: 'Minced Beef (80/20)', sku: 'RM-BEEF-001', category: 'Raw Meat', quantity: 85.0, unit: 'kg', purchase_price: 4.50, selling_price: null, minimum_stock: 15.0, made_from_item_id: null, pack_size: null, yield_qty: null, yield_unit: null },
+            { id: 2, branch_id: 1, type: 'prepared', name: 'Burger Patties (4oz)', sku: 'PR-PATTY-001', category: 'Prepared', quantity: 140.0, unit: 'pcs', purchase_price: 1.20, selling_price: 2.50, minimum_stock: 40.0, made_from_item_id: 1, pack_size: 7, pack_unit: 'kg', yield_qty: 50, yield_unit: 'pcs' },
+            { id: 3, branch_id: 1, type: 'raw_material', name: 'Brioche Burger Buns', sku: 'RM-BUN-002', category: 'Bakery', quantity: 8.0, unit: 'packs', purchase_price: 3.20, selling_price: null, minimum_stock: 20.0, made_from_item_id: null, pack_size: null, yield_qty: null, yield_unit: null },
+            { id: 4, branch_id: 1, type: 'raw_material', name: 'Cheddar Cheese Slices', sku: 'RM-CHZ-003', category: 'Dairy', quantity: 2.0, unit: 'packs', purchase_price: 6.00, selling_price: null, minimum_stock: 10.0, made_from_item_id: null, pack_size: null, yield_qty: null, yield_unit: null },
+            { id: 5, branch_id: 1, type: 'raw_material', name: 'Fresh Tomatoes', sku: 'RM-TOM-004', category: 'Produce', quantity: 0.0, unit: 'kg', purchase_price: 2.10, selling_price: null, minimum_stock: 5.0, made_from_item_id: null, pack_size: null, yield_qty: null, yield_unit: null },
+
+            { id: 6, branch_id: 2, type: 'raw_material', name: 'Minced Beef (80/20)', sku: 'RM-BEEF-001', category: 'Raw Meat', quantity: 45.0, unit: 'kg', purchase_price: 4.50, selling_price: null, minimum_stock: 15.0, made_from_item_id: null, pack_size: null, yield_qty: null, yield_unit: null },
+            { id: 7, branch_id: 2, type: 'prepared', name: 'Burger Patties (4oz)', sku: 'PR-PATTY-001', category: 'Prepared', quantity: 60.0, unit: 'pcs', purchase_price: 1.20, selling_price: 2.50, minimum_stock: 40.0, made_from_item_id: 6, pack_size: 7, pack_unit: 'kg', yield_qty: 50, yield_unit: 'pcs' }
+        ];
+
+        let transactionLogs = [
+            { id: 101, created_at: '2026-09-18 08:30:15', item_name: 'Minced Beef (80/20)', type: 'purchase', quantity: '+50.00 kg', supplier: 'Smithfield Meat Wholesalers', branch: 'Central London', notes: 'Invoice #SUP-8821', user: 'HQ Admin' },
+            { id: 102, created_at: '2026-09-18 08:45:20', item_name: 'Minced Beef (80/20)', type: 'conversion_out', quantity: '-14.00 kg', supplier: '-', branch: 'Central London', notes: 'Converted into Burger Patties', user: 'Chef Marco' },
+            { id: 103, created_at: '2026-09-18 08:45:20', item_name: 'Burger Patties (4oz)', type: 'conversion_in', quantity: '+100.00 pcs', supplier: '-', branch: 'Central London', notes: 'Produced from Minced Beef', user: 'Chef Marco' },
+            { id: 104, created_at: '2026-09-18 08:52:00', item_name: 'Burger Patties (4oz)', type: 'sale', quantity: '-2.00 pcs', supplier: '-', branch: 'Central London', notes: 'POS Order #PAC-99201', user: 'System (Auto)' }
+        ];
+
+        // Section Switcher
+        function showSection(sectionId) {
+            const sections = ['stock-overview', 'items-conversions', 'add-stock', 'add-menu-item', 'suppliers', 'transaction-logs'];
+            sections.forEach(s => {
+                const el = document.getElementById(`section-${s}`);
+                if (el) el.classList.add('hidden');
+                const nav = document.getElementById(`nav-${s}`);
+                if (nav) nav.classList.remove('active');
+            });
+
+            const activeSection = document.getElementById(`section-${sectionId}`);
+            if (activeSection) activeSection.classList.remove('hidden');
+
+            const activeNav = document.getElementById(`nav-${sectionId}`);
+            if (activeNav) activeNav.classList.add('active');
+
+            const titles = {
+                'stock-overview': 'Inventory Management & Stock Overview',
+                'items-conversions': 'Items & Yield Conversions',
+                'add-stock': 'Add Stock, Convert & Distribute',
+                'add-menu-item': 'Add Menu Item Recipe',
+                'suppliers': 'Suppliers & Vendor Management',
+                'transaction-logs': 'Stock Transaction & Audit Logs'
+            };
+            document.getElementById('breadcrumbSection').innerText = titles[sectionId] || 'Inventory';
+
+            populateDropdowns();
+            renderTable();
+            renderSuppliers();
+            renderTransactions();
+            renderKPIs();
+        }
+
+        // Branch Switcher
+        function handleBranchChange(branchId) {
+            currentBranchId = branchId;
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+            showToast(`Switched active branch to Branch #${branchId}`, 'info');
+        }
+
+        function handleCategoryFilter(cat) {
+            currentCategoryFilter = cat;
+            renderTable();
+        }
+
+        function handleStatusFilter(status) {
+            currentStatusFilter = status;
+            renderTable();
+        }
+
+        function handleTableSearch(val) {
+            searchKeyword = val.toLowerCase();
+            renderTable();
+        }
+
+        // Populate dynamic select dropdowns across tabs
+        function populateDropdowns() {
+            const rawItems = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId) && i.type === 'raw_material');
+            const prepItems = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId) && i.type === 'prepared');
+            const allBranchItems = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId));
+
+            // Populate 'Made from' in section-items-conversions
+            const prepMadeFrom = document.getElementById('prepMadeFrom');
+            if (prepMadeFrom) {
+                prepMadeFrom.innerHTML = rawItems.length > 0 
+                    ? rawItems.map(r => `<option value="${r.id}">${r.name} (${r.unit})</option>`).join('')
+                    : '<option value="">No raw materials found for branch</option>';
+            }
+
+            // Populate 'Stock raw material' in section-add-stock
+            const stockRawSelect = document.getElementById('stockRawSelect');
+            if (stockRawSelect) {
+                stockRawSelect.innerHTML = rawItems.map(r => `<option value="${r.id}">${r.name} (Cur: ${r.quantity} ${r.unit})</option>`).join('');
+            }
+
+            // Populate Supplier dropdown in section-add-stock
+            const stockSupplierSelect = document.getElementById('stockSupplierSelect');
+            if (stockSupplierSelect) {
+                const branchSuppliers = suppliers.filter(s => String(s.branch_id) === String(currentBranchId));
+                stockSupplierSelect.innerHTML = branchSuppliers.length > 0 
+                    ? branchSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')
+                    : '<option value="">No vendor selected</option>';
+            }
+
+            // Populate 'Convert to prepared item' in section-add-stock
+            const convertPreparedSelect = document.getElementById('convertPreparedSelect');
+            if (convertPreparedSelect) {
+                convertPreparedSelect.innerHTML = prepItems.map(p => `<option value="${p.id}">${p.name} (Cur: ${p.quantity} ${p.unit})</option>`).join('');
+                updateYieldPreview();
+            }
+
+            // Populate 'Distribute' item dropdown
+            const distributeItemSelect = document.getElementById('distributeItemSelect');
+            if (distributeItemSelect) {
+                distributeItemSelect.innerHTML = allBranchItems.map(i => `<option value="${i.id}">${i.name} (${i.quantity} ${i.unit})</option>`).join('');
+            }
+
+            // Populate 'Made From' in add-menu-item
+            const menuMadeFrom = document.getElementById('menuMadeFrom');
+            if (menuMadeFrom) {
+                menuMadeFrom.innerHTML = rawItems.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+            }
+        }
+
+        // Live Yield Preview Calculation (Matching Screenshot 2 Section 2)
+        function updateYieldPreview() {
+            const preparedId = document.getElementById('convertPreparedSelect')?.value;
+            const packs = parseFloat(document.getElementById('convertPacksQty')?.value || 1);
+            const previewEl = document.getElementById('convertYieldPreview');
+            if (!previewEl) return;
+
+            const prepItem = inventoryItems.find(i => String(i.id) === String(preparedId));
+            if (!prepItem || !prepItem.made_from_item_id) {
+                previewEl.innerText = 'Select a prepared item to preview yield';
+                return;
+            }
+
+            const rawItem = inventoryItems.find(i => String(i.id) === String(prepItem.made_from_item_id));
+            const rawNeeded = (prepItem.pack_size || 7) * packs;
+            const yieldProduced = (prepItem.yield_qty || 50) * packs;
+
+            previewEl.innerHTML = `<span class="text-orange-400 font-bold">${packs} pack (${rawNeeded} ${rawItem?.unit || 'kg'} raw)</span> &nbsp;➔&nbsp; <span class="text-emerald-400 font-bold">${yieldProduced} ${prepItem.yield_unit || 'pcs'} prepared</span>`;
+        }
+
+        // Form Handlers
+        function handleCreateSupplier(e) {
+            e.preventDefault();
+            const name = document.getElementById('suppName').value;
+            const phone = document.getElementById('suppPhone').value;
+            const email = document.getElementById('suppEmail').value;
+            const address = document.getElementById('suppAddress').value;
+
+            const newSupplier = {
+                id: Date.now(),
+                branch_id: parseInt(currentBranchId),
+                name,
+                phone,
+                email,
+                address
+            };
+
+            suppliers.unshift(newSupplier);
+            showToast(`Supplier "${name}" saved successfully!`, 'success');
+            document.getElementById('supplierForm').reset();
+            populateDropdowns();
+            renderSuppliers();
+        }
+
+        function renderSuppliers() {
+            const tbody = document.getElementById('suppliersTableBody');
+            if (!tbody) return;
+
+            const branchSuppliers = suppliers.filter(s => String(s.branch_id) === String(currentBranchId));
+            if (branchSuppliers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-500 text-xs">No suppliers configured for this branch yet.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = branchSuppliers.map(s => `
+                <tr class="hover:bg-[#131a26] transition-colors">
+                    <td class="py-3 px-4 font-bold text-white">${s.name}</td>
+                    <td class="py-3 px-4 text-slate-400 font-medium">Branch #${s.branch_id}</td>
+                    <td class="py-3 px-4 text-slate-300 font-mono">${s.phone || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.email || '-'}</td>
+                    <td class="py-3 px-4 text-slate-400">${s.address || '-'}</td>
+                    <td class="py-3 px-4 text-right">
+                        <button onclick="deleteSupplier(${s.id})" class="px-2 py-1 rounded bg-[#1c2433] hover:bg-red-600 hover:text-white text-[11px] font-semibold text-slate-400 transition-colors">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function deleteSupplier(suppId) {
+            suppliers = suppliers.filter(s => s.id !== suppId);
+            showToast('Supplier deleted', 'info');
+            populateDropdowns();
+            renderSuppliers();
+        }
+
+        function handleCreateRawMaterial(e) {
+            e.preventDefault();
+            const name = document.getElementById('rawName').value;
+            const sku = document.getElementById('rawSku').value || `RM-${Date.now().toString().slice(-4)}`;
+            const unit = document.getElementById('rawUnit').value;
+            const qty = parseFloat(document.getElementById('rawQty').value);
+            const price = parseFloat(document.getElementById('rawPrice').value);
+            const minStock = parseFloat(document.getElementById('rawMinStock').value);
+
+            const newItem = {
+                id: Date.now(),
+                branch_id: parseInt(currentBranchId),
+                type: 'raw_material',
+                name,
+                sku,
+                category: 'Raw Meat',
+                quantity: qty,
+                unit,
+                purchase_price: price,
+                selling_price: null,
+                minimum_stock: minStock,
+                made_from_item_id: null,
+                pack_size: null,
+                yield_qty: null,
+                yield_unit: null
+            };
+
+            inventoryItems.unshift(newItem);
+            transactionLogs.unshift({
+                id: Date.now() + 1,
+                created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                item_name: name,
+                type: 'purchase',
+                quantity: `+${qty.toFixed(2)} ${unit}`,
+                supplier: 'Initial Setup',
+                branch: `Branch #${currentBranchId}`,
+                notes: 'Initial raw material stock',
+                user: 'HQ Admin'
+            });
+
+            showToast(`Added raw material: "${name}"`, 'success');
+            document.getElementById('rawMaterialForm').reset();
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+        }
+
+        function handleCreatePreparedItem(e) {
+            e.preventDefault();
+            const name = document.getElementById('prepName').value;
+            const madeFromId = parseInt(document.getElementById('prepMadeFrom').value);
+            const yieldUnit = document.getElementById('prepYieldUnit').value;
+            const packSize = parseFloat(document.getElementById('prepPackSize').value);
+            const yieldQty = parseFloat(document.getElementById('prepYieldQty').value);
+            const pPrice = parseFloat(document.getElementById('prepPurchasePrice').value);
+            const sPrice = parseFloat(document.getElementById('prepSellingPrice').value);
+            const minStock = parseFloat(document.getElementById('prepMinStock').value);
+
+            const newItem = {
+                id: Date.now(),
+                branch_id: parseInt(currentBranchId),
+                type: 'prepared',
+                name,
+                sku: `PR-${Date.now().toString().slice(-4)}`,
+                category: 'Prepared',
+                quantity: 0,
+                unit: yieldUnit,
+                purchase_price: pPrice,
+                selling_price: sPrice,
+                minimum_stock: minStock,
+                made_from_item_id: madeFromId,
+                pack_size: packSize,
+                pack_unit: 'kg',
+                yield_qty: yieldQty,
+                yield_unit: yieldUnit
+            };
+
+            inventoryItems.unshift(newItem);
+            showToast(`Configured prepared item: "${name}" with yield conversion ratio!`, 'success');
+            document.getElementById('preparedItemForm').reset();
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+        }
+
+        function handleStockRawMaterial(e) {
+            e.preventDefault();
+            const rawId = parseInt(document.getElementById('stockRawSelect').value);
+            const supplierSelect = document.getElementById('stockSupplierSelect');
+            const supplierName = supplierSelect && supplierSelect.options[supplierSelect.selectedIndex] ? supplierSelect.options[supplierSelect.selectedIndex].text : '-';
+            const qty = parseFloat(document.getElementById('stockRawQty').value);
+            const notes = document.getElementById('stockRawNotes').value || 'Restock raw material purchase';
+
+            const item = inventoryItems.find(i => i.id === rawId);
+            if (!item) return;
+
+            item.quantity += qty;
+            transactionLogs.unshift({
+                id: Date.now(),
+                created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                item_name: item.name,
+                type: 'purchase',
+                quantity: `+${qty.toFixed(2)} ${item.unit}`,
+                supplier: supplierName,
+                branch: `Branch #${currentBranchId}`,
+                notes: notes,
+                user: 'HQ Admin'
+            });
+
+            showToast(`Added +${qty} ${item.unit} to ${item.name} from ${supplierName}`, 'success');
+            document.getElementById('stockRawQty').value = '';
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+        }
+
+        function handleExecuteConversion(e) {
+            e.preventDefault();
+            const prepId = parseInt(document.getElementById('convertPreparedSelect').value);
+            const packs = parseFloat(document.getElementById('convertPacksQty').value || 1);
+
+            const prepItem = inventoryItems.find(i => i.id === prepId);
+            if (!prepItem || !prepItem.made_from_item_id) {
+                showToast('Conversion ratio not configured for this item', 'error');
+                return;
+            }
+
+            const rawItem = inventoryItems.find(i => i.id === prepItem.made_from_item_id);
+            const rawNeeded = (prepItem.pack_size || 7) * packs;
+            const yieldProduced = (prepItem.yield_qty || 50) * packs;
+
+            if (rawItem.quantity < rawNeeded) {
+                showToast(`Insufficient raw material! Available: ${rawItem.quantity} ${rawItem.unit}, Needed: ${rawNeeded} ${rawItem.unit}`, 'error');
+                return;
+            }
+
+            // Atomic update
+            rawItem.quantity -= rawNeeded;
+            prepItem.quantity += yieldProduced;
+
+            const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            transactionLogs.unshift({
+                id: Date.now(),
+                created_at: now,
+                item_name: rawItem.name,
+                type: 'conversion_out',
+                quantity: `-${rawNeeded.toFixed(2)} ${rawItem.unit}`,
+                supplier: '-',
+                branch: `Branch #${currentBranchId}`,
+                notes: `Converted into ${prepItem.name}`,
+                user: 'HQ Admin'
+            });
+            transactionLogs.unshift({
+                id: Date.now() + 1,
+                created_at: now,
+                item_name: prepItem.name,
+                type: 'conversion_in',
+                quantity: `+${yieldProduced.toFixed(2)} ${prepItem.unit}`,
+                supplier: '-',
+                branch: `Branch #${currentBranchId}`,
+                notes: `Produced from ${rawItem.name}`,
+                user: 'HQ Admin'
+            });
+
+            showToast(`Conversion complete! -${rawNeeded} ${rawItem.unit} raw consumed ➔ +${yieldProduced} ${prepItem.unit} produced!`, 'success');
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+        }
+
+        function handleDistributeToBranch(e) {
+            e.preventDefault();
+            const itemId = parseInt(document.getElementById('distributeItemSelect').value);
+            const targetBranch = parseInt(document.getElementById('distributeBranchSelect').value);
+            const qty = parseFloat(document.getElementById('distributeQty').value);
+
+            const sourceItem = inventoryItems.find(i => i.id === itemId);
+            if (!sourceItem || sourceItem.quantity < qty) {
+                showToast(`Insufficient stock to distribute. Available: ${sourceItem?.quantity || 0}`, 'error');
+                return;
+            }
+
+            sourceItem.quantity -= qty;
+            
+            // Find or create in target branch
+            let targetItem = inventoryItems.find(i => i.branch_id === targetBranch && i.name === sourceItem.name);
+            if (!targetItem) {
+                targetItem = { ...sourceItem, id: Date.now(), branch_id: targetBranch, quantity: 0 };
+                inventoryItems.push(targetItem);
+            }
+            targetItem.quantity += qty;
+
+            const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            transactionLogs.unshift({
+                id: Date.now(),
+                created_at: now,
+                item_name: sourceItem.name,
+                type: 'transfer_out',
+                quantity: `-${qty.toFixed(2)} ${sourceItem.unit}`,
+                supplier: '-',
+                branch: `Branch #${currentBranchId}`,
+                notes: `Distributed to Branch #${targetBranch}`,
+                user: 'HQ Admin'
+            });
+
+            showToast(`Successfully transferred ${qty} ${sourceItem.unit} to Branch #${targetBranch}`, 'success');
+            document.getElementById('distributeQty').value = '';
+            populateDropdowns();
+            renderTable();
+            renderKPIs();
+        }
+
+        function handleCreateMenuItemRecipe(e) {
+            e.preventDefault();
+            const name = document.getElementById('menuName').value;
+            const sPrice = parseFloat(document.getElementById('menuSellingPrice').value);
+            showToast(`Menu Item "${name}" (£${sPrice.toFixed(2)}) & Recipe saved successfully!`, 'success');
+            showSection('stock-overview');
+        }
+
+        // Render Current Stock Table
+        function renderTable() {
+            const tbody = document.getElementById('inventoryTableBody');
+            if (!tbody) return;
+
+            let items = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId));
+
+            if (currentCategoryFilter !== 'all') {
+                items = items.filter(i => i.category === currentCategoryFilter);
+            }
+
+            if (searchKeyword) {
+                items = items.filter(i => i.name.toLowerCase().includes(searchKeyword) || (i.sku && i.sku.toLowerCase().includes(searchKeyword)));
+            }
+
+            if (currentStatusFilter !== 'all') {
+                items = items.filter(i => {
+                    const status = getStockStatus(i.quantity, i.minimum_stock);
+                    return status === currentStatusFilter;
+                });
+            }
+
+            if (items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-slate-500 text-xs">No inventory items match the current filters for this branch.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = items.map(item => {
+                const status = getStockStatus(item.quantity, item.minimum_stock);
+                const statusBadge = getStatusBadgeHTML(status);
+                const isPrepared = item.type === 'prepared';
+
+                return `
+                    <tr class="hover:bg-[#131a26] transition-colors">
+                        <td class="py-3.5 px-4">
+                            <div class="font-bold text-white">${item.name}</div>
+                            <div class="text-[10px] text-slate-500 font-mono">${item.sku || 'N/A'}</div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold ${isPrepared ? 'bg-purple-950 text-purple-300 border border-purple-800/40' : 'bg-blue-950 text-blue-300 border border-blue-800/40'}">
+                                ${isPrepared ? 'Prepared' : 'Raw Material'}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-400 font-medium">${item.category}</td>
+                        <td class="py-3.5 px-4">
+                            <span class="font-extrabold text-white text-sm font-heading">${item.quantity.toFixed(2)}</span>
+                            <span class="text-[11px] text-slate-400 ml-0.5">${item.unit}</span>
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-400 font-medium">${item.minimum_stock} ${item.unit}</td>
+                        <td class="py-3.5 px-4">
+                            <div class="text-slate-200">Cost: £${item.purchase_price.toFixed(2)}</div>
+                            <div class="text-[10px] text-slate-400">${item.selling_price ? 'Sell: £' + item.selling_price.toFixed(2) : '-'}</div>
+                        </td>
+                        <td class="py-3.5 px-4">${statusBadge}</td>
+                        <td class="py-3.5 px-4 text-right">
+                            <div class="flex items-center justify-end gap-1.5">
+                                <button onclick="quickRestock(${item.id})" class="px-2 py-1 rounded bg-[#1c2433] hover:bg-orange-600 hover:text-white text-[11px] font-semibold text-slate-300 transition-colors" title="Quick Restock">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                                ${isPrepared ? `
+                                <button onclick="quickConvert(${item.id})" class="px-2 py-1 rounded bg-[#1c2433] hover:bg-purple-600 hover:text-white text-[11px] font-semibold text-slate-300 transition-colors" title="Convert Now">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                </button>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render Transaction History
+        function renderTransactions() {
+            const tbody = document.getElementById('transactionTableBody');
+            if (!tbody) return;
+
+            tbody.innerHTML = transactionLogs.map(t => {
+                const badgeClass = `badge-${t.type}`;
+                const typeLabel = t.type.replace('_', ' ').toUpperCase();
+
+                return `
+                    <tr class="hover:bg-[#131a26] transition-colors">
+                        <td class="py-3 px-4 font-mono text-[11px] text-slate-400">${t.created_at}</td>
+                        <td class="py-3 px-4 font-bold text-white">${t.item_name}</td>
+                        <td class="py-3 px-4">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeClass}">${typeLabel}</span>
+                        </td>
+                        <td class="py-3 px-4 font-extrabold font-mono text-slate-100">${t.quantity}</td>
+                        <td class="py-3 px-4 text-slate-300 font-medium">${t.supplier || '-'}</td>
+                        <td class="py-3 px-4 text-slate-400 font-medium">${t.branch}</td>
+                        <td class="py-3 px-4 text-slate-300">${t.notes}</td>
+                        <td class="py-3 px-4 text-slate-400">${t.user}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render KPIs
+        function renderKPIs() {
+            const branchItems = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId));
+            const total = branchItems.length;
+            const lowStock = branchItems.filter(i => getStockStatus(i.quantity, i.minimum_stock) === 'low_stock').length;
+            const outOfStock = branchItems.filter(i => getStockStatus(i.quantity, i.minimum_stock) === 'out_of_stock').length;
+            const totalVal = branchItems.reduce((acc, i) => acc + (i.quantity * i.purchase_price), 0);
+
+            document.getElementById('kpiTotalItems').innerText = total;
+            document.getElementById('kpiStockValue').innerText = `£${totalVal.toFixed(2)}`;
+            document.getElementById('kpiLowStock').innerText = lowStock;
+            document.getElementById('kpiOutOfStock').innerText = outOfStock;
+
+            const banner = document.getElementById('lowStockBanner');
+            if (lowStock > 0 || outOfStock > 0) {
+                banner.classList.remove('hidden');
+                document.getElementById('lowStockSummaryText').innerText = `${lowStock + outOfStock} items are low or out of stock in this branch!`;
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function getStockStatus(qty, min) {
+            if (qty <= 0) return 'out_of_stock';
+            if (qty <= min) return 'low_stock';
+            return 'in_stock';
+        }
+
+        function getStatusBadgeHTML(status) {
+            if (status === 'in_stock') {
+                return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/40 flex items-center gap-1 w-max"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> In Stock</span>`;
+            } else if (status === 'low_stock') {
+                return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800/40 flex items-center gap-1 w-max"><span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping"></span> Low Stock</span>`;
+            } else {
+                return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-950 text-red-400 border border-red-800/40 flex items-center gap-1 w-max"><span class="h-1.5 w-1.5 rounded-full bg-red-500"></span> Out of Stock</span>`;
+            }
+        }
+
+        function quickRestock(itemId) {
+            showSection('add-stock');
+            const select = document.getElementById('stockRawSelect');
+            if (select) select.value = itemId;
+        }
+
+        function quickConvert(itemId) {
+            showSection('add-stock');
+            const select = document.getElementById('convertPreparedSelect');
+            if (select) {
+                select.value = itemId;
+                updateYieldPreview();
+            }
+        }
+
+        function exportStockCSV() {
+            const items = inventoryItems.filter(i => String(i.branch_id) === String(currentBranchId));
+            let csvContent = "data:text/csv;charset=utf-8,ID,Name,SKU,Type,Category,Quantity,Unit,MinStock,PurchasePrice,SellingPrice\n";
+            items.forEach(i => {
+                csvContent += `${i.id},"${i.name}",${i.sku},${i.type},${i.category},${i.quantity},${i.unit},${i.minimum_stock},${i.purchase_price},${i.selling_price || 0}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `pacinos-branch-${currentBranchId}-inventory.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Inventory CSV exported successfully!', 'success');
+        }
+
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200',
+                error: 'bg-red-950/90 border-red-500/50 text-red-200',
+                info: 'bg-blue-950/90 border-blue-500/50 text-blue-200'
+            };
+            toast.className = `px-4 py-3 rounded-lg border backdrop-blur-md shadow-xl text-xs font-semibold flex items-center gap-2 pointer-events-auto transition-all transform duration-200 ${colors[type] || colors.success}`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>${msg}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Initialize On Load
+        document.addEventListener('DOMContentLoaded', () => {
+            showSection('stock-overview');
+        });
+    </script>
+</body>
+</html>
