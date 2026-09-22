@@ -8,7 +8,9 @@ use App\Models\Driver;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Services\FirebaseNotificationService;
+use App\Services\InventoryStockService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
@@ -210,135 +212,142 @@ class DeliveryController extends Controller
             }
         }
 
-        $status = $validated['delivery_status'];
-        $order = $delivery->order;
-        $driverId = $validated['driver_id'] ?? $delivery->driver_id;
-        $driver = $driverId ? Driver::find($driverId) : $delivery->driver;
-        $driverName = $driver?->name ?? 'Driver';
+        return DB::transaction(function () use ($request, $delivery, $validated) {
+            $status = $validated['delivery_status'];
+            $order = $delivery->order;
+            $driverId = $validated['driver_id'] ?? $delivery->driver_id;
+            $driver = $driverId ? Driver::find($driverId) : $delivery->driver;
+            $driverName = $driver?->name ?? 'Driver';
 
-        if ($status === 'assigned') {
-            if ($driverId) {
-                Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
+            if ($status === 'assigned') {
+                if ($driverId) {
+                    Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
+                    $delivery->order()?->update([
+                        'assigned_driver_id' => $driverId,
+                        'order_status' => 'accepted',
+                    ]);
+                }
+            } elseif ($status === 'picked_up' || $status === 'on_the_way') {
+                if (!$delivery->pickup_time) {
+                    $validated['pickup_time'] = now();
+                }
+                if ($driverId) {
+                    Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
+                }
                 $delivery->order()?->update([
                     'assigned_driver_id' => $driverId,
-                    'order_status' => 'accepted',
+                    'order_status' => 'out_for_delivery',
                 ]);
-            }
-        } elseif ($status === 'picked_up' || $status === 'on_the_way') {
-            if (!$delivery->pickup_time) {
-                $validated['pickup_time'] = now();
-            }
-            if ($driverId) {
-                Driver::where('id', $driverId)->update(['status' => 'on_delivery']);
-            }
-            $delivery->order()?->update([
-                'assigned_driver_id' => $driverId,
-                'order_status' => 'out_for_delivery',
-            ]);
 
-            // Notify Customer (In-App & FCM Push)
-            if ($order && $order->user_id) {
-                try {
-                    $notifTitle = "Order Out for Delivery 🛵";
-                    $notifMessage = "Your order #{$order->order_number} has been picked up by {$driverName} and is on the way!";
+                // Notify Customer (In-App & FCM Push)
+                if ($order && $order->user_id) {
+                    try {
+                        $notifTitle = "Order Out for Delivery 🛵";
+                        $notifMessage = "Your order #{$order->order_number} has been picked up by {$driverName} and is on the way!";
 
-                    Notification::create([
-                        'user_id' => $order->user_id,
-                        'branch_id' => $order->branch_id,
-                        'title' => $notifTitle,
-                        'message' => $notifMessage,
-                        'type' => 'order',
-                        'is_read' => false,
-                    ]);
+                        Notification::create([
+                            'user_id' => $order->user_id,
+                            'branch_id' => $order->branch_id,
+                            'title' => $notifTitle,
+                            'message' => $notifMessage,
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
 
-                    $customerToken = $order->user?->fcm_token;
-                    if ($customerToken) {
-                        FirebaseNotificationService::sendPushNotification(
-                            $customerToken,
-                            $notifTitle,
-                            $notifMessage,
-                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'out_for_delivery']
-                        );
+                        $customerToken = $order->user?->fcm_token;
+                        if ($customerToken) {
+                            FirebaseNotificationService::sendPushNotification(
+                                $customerToken,
+                                $notifTitle,
+                                $notifMessage,
+                                ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'out_for_delivery']
+                            );
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Customer Pickup Notification Error: ' . $e->getMessage());
                     }
-                } catch (\Exception $e) {
-                    Log::error('Customer Pickup Notification Error: ' . $e->getMessage());
+                }
+            } elseif ($status === 'delivered') {
+                $validated['delivered_time'] = now();
+                $delivery->order()?->update(['order_status' => 'completed', 'payment_status' => 'paid']);
+                if ($driverId) {
+                    Driver::where('id', $driverId)->update(['status' => 'available']);
+                }
+
+                // Automatic Stock Deduction when Delivery Completes (Order Completed)
+                if ($order) {
+                    InventoryStockService::deductStockForOrder($order, auth()->id());
+                }
+
+                // Notify Customer (In-App & FCM Push)
+                if ($order && $order->user_id) {
+                    try {
+                        $notifTitle = "Order Delivered 🎉";
+                        $notifMessage = "Your order #{$order->order_number} has been delivered. Enjoy your meal!";
+
+                        Notification::create([
+                            'user_id' => $order->user_id,
+                            'branch_id' => $order->branch_id,
+                            'title' => $notifTitle,
+                            'message' => $notifMessage,
+                            'type' => 'order',
+                            'is_read' => false,
+                        ]);
+
+                        $customerToken = $order->user?->fcm_token;
+                        if ($customerToken) {
+                            FirebaseNotificationService::sendPushNotification(
+                                $customerToken,
+                                $notifTitle,
+                                $notifMessage,
+                                ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'delivered']
+                            );
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Customer Delivered Notification Error: ' . $e->getMessage());
+                    }
+                }
+            } elseif ($status === 'failed') {
+                $delivery->order()?->update(['order_status' => 'cancelled']);
+                if ($driverId) {
+                    Driver::where('id', $driverId)->update(['status' => 'available']);
                 }
             }
-        } elseif ($status === 'delivered') {
-            $validated['delivered_time'] = now();
-            $delivery->order()?->update(['order_status' => 'completed', 'payment_status' => 'paid']);
-            if ($driverId) {
-                Driver::where('id', $driverId)->update(['status' => 'available']);
-            }
 
-            // Notify Customer (In-App & FCM Push)
-            if ($order && $order->user_id) {
-                try {
-                    $notifTitle = "Order Delivered 🎉";
-                    $notifMessage = "Your order #{$order->order_number} has been delivered. Enjoy your meal!";
-
-                    Notification::create([
-                        'user_id' => $order->user_id,
-                        'branch_id' => $order->branch_id,
-                        'title' => $notifTitle,
-                        'message' => $notifMessage,
-                        'type' => 'order',
-                        'is_read' => false,
-                    ]);
-
-                    $customerToken = $order->user?->fcm_token;
-                    if ($customerToken) {
-                        FirebaseNotificationService::sendPushNotification(
-                            $customerToken,
-                            $notifTitle,
-                            $notifMessage,
-                            ['type' => 'order_status', 'order_id' => (string) $order->id, 'status' => 'delivered']
-                        );
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Customer Delivered Notification Error: ' . $e->getMessage());
+            if (isset($validated['driver_id']) && $validated['driver_id'] !== $delivery->driver_id) {
+                // Free previous driver if changed
+                if ($delivery->driver_id && $delivery->driver_id !== $validated['driver_id']) {
+                    Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
+                }
+                // Mark new driver as on delivery
+                if (!empty($validated['driver_id'])) {
+                    Driver::where('id', $validated['driver_id'])->update(['status' => 'on_delivery']);
+                    $delivery->order()?->update(['assigned_driver_id' => $validated['driver_id']]);
                 }
             }
-        } elseif ($status === 'failed') {
-            $delivery->order()?->update(['order_status' => 'cancelled']);
-            if ($driverId) {
-                Driver::where('id', $driverId)->update(['status' => 'available']);
-            }
-        }
 
-        if (isset($validated['driver_id']) && $validated['driver_id'] !== $delivery->driver_id) {
-            // Free previous driver if changed
-            if ($delivery->driver_id && $delivery->driver_id !== $validated['driver_id']) {
-                Driver::where('id', $delivery->driver_id)->update(['status' => 'available']);
-            }
-            // Mark new driver as on delivery
-            if (!empty($validated['driver_id'])) {
-                Driver::where('id', $validated['driver_id'])->update(['status' => 'on_delivery']);
-                $delivery->order()?->update(['assigned_driver_id' => $validated['driver_id']]);
-            }
-        }
+            $delivery->update($validated);
 
-        $delivery->update($validated);
-
-        // Broadcast real-time order update to Branch Kanban Board
-        if ($delivery->order && $delivery->order->branch_id) {
-            try {
-                broadcast(new OrderStatusUpdatedBroadcastEvent($delivery->order->fresh(), 'delivery_status_updated'));
-            } catch (\Exception $e) {
-                Log::error('Delivery Order Status Broadcast Error: ' . $e->getMessage());
+            // Broadcast real-time order update to Branch Kanban Board
+            if ($delivery->order && $delivery->order->branch_id) {
+                try {
+                    broadcast(new OrderStatusUpdatedBroadcastEvent($delivery->order->fresh(), 'delivery_status_updated'));
+                } catch (\Exception $e) {
+                    Log::error('Delivery Order Status Broadcast Error: ' . $e->getMessage());
+                }
             }
-        }
 
-        return response()->json($delivery->load([
-            'order.items.menuItem',
-            'order.branch',
-            'order.user.defaultAddress',
-            'order.user.address',
-            'order.address',
-            'driver.user',
-            'user.defaultAddress',
-            'user.address',
-        ]));
+            return response()->json($delivery->load([
+                'order.items.menuItem',
+                'order.branch',
+                'order.user.defaultAddress',
+                'order.user.address',
+                'order.address',
+                'driver.user',
+                'user.defaultAddress',
+                'user.address',
+            ]));
+        });
     }
 
     /**

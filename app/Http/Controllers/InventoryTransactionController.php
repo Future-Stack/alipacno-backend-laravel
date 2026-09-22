@@ -73,28 +73,53 @@ class InventoryTransactionController extends Controller
         $validated = $request->validate([
             'inventory_item_id' => 'required|exists:inventory_items,id',
             'transaction_type' => 'required|in:purchase,sale,waste,adjustment,restock,transfer_in,transfer_out,conversion_in,conversion_out',
-            'quantity' => 'required|numeric|min:0.01',
+            'quantity' => 'required|numeric',
+            'adjustment_type' => 'nullable|in:add,deduct,increase,decrease,in,out',
             'notes' => 'nullable|string',
-            // FIX (supplier traceability): required for purchase/restock so
-            // every stock-IN row is always attributable to a supplier —
-            // optional (nullable) for every other type, since sale/waste/
-            // transfer/conversion/adjustment have nothing to do with a supplier.
             'supplier_id' => 'required_if:transaction_type,purchase,restock|nullable|exists:suppliers,id',
         ]);
+
+        $type = $validated['transaction_type'];
+        $rawQty = (float) $validated['quantity'];
+        $absQty = abs($rawQty);
+
+        if ($absQty <= 0.0001) {
+            return response()->json(['message' => 'Quantity must be greater than 0.'], 422);
+        }
+
+        if ($type !== 'adjustment' && $rawQty < 0) {
+            return response()->json(['message' => 'Quantity must be a positive number for ' . $type], 422);
+        }
 
         if ($request->user()) {
             $validated['created_by'] = $request->user()->id;
         }
 
-        $type = $validated['transaction_type'];
-        $qty = (float) $validated['quantity'];
-        $increasesStock = in_array($type, ['purchase', 'restock', 'adjustment', 'transfer_in', 'conversion_in']);
+        // Determine if this transaction increases or decreases inventory stock
+        if ($type === 'adjustment') {
+            $adjType = strtolower($validated['adjustment_type'] ?? '');
+            $isDecrease = in_array($adjType, ['deduct', 'decrease', 'out']) || $rawQty < 0;
+            $increasesStock = !$isDecrease;
+
+            // Ensure notes mention whether it's increase or decrease for audit traceability
+            $prefix = $increasesStock ? '[Stock Increase]' : '[Stock Decrease]';
+            if (empty($validated['notes'])) {
+                $validated['notes'] = "Manual adjustment: {$prefix} of {$absQty} units";
+            } elseif (!str_contains($validated['notes'], '[Stock Increase]') && !str_contains($validated['notes'], '[Stock Decrease]')) {
+                $validated['notes'] = "{$prefix} " . $validated['notes'];
+            }
+        } else {
+            $increasesStock = in_array($type, ['purchase', 'restock', 'transfer_in', 'conversion_in']);
+        }
+
+        $validated['quantity'] = $absQty;
+        unset($validated['adjustment_type']);
 
         try {
-            $transaction = DB::transaction(function () use ($validated, $qty, $increasesStock) {
+            $transaction = DB::transaction(function () use ($validated, $absQty, $increasesStock) {
                 $transaction = InventoryTransaction::create($validated);
 
-                $this->applyStockDelta($validated['inventory_item_id'], $increasesStock ? $qty : -$qty);
+                $this->applyStockDelta($validated['inventory_item_id'], $increasesStock ? $absQty : -$absQty);
 
                 return $transaction;
             });
@@ -133,19 +158,21 @@ class InventoryTransactionController extends Controller
     /**
      * Remove the specified inventory transaction.
      *
-     * FIX: this previously deleted the row WITHOUT reversing its effect on
-     * the item's stock — deleting a 'sale' transaction left the quantity
-     * decreased forever, permanently desyncing stock from history. Now the
-     * delta is reversed first, inside a locked DB transaction. If reversing
-     * would push the item negative (e.g. deleting an old 'purchase' whose
-     * stock has since been sold further), the delete is rejected with a
-     * clear 422 instead of corrupting the quantity.
+     * FIX: Reverses the transaction effect on stock inside a locked DB transaction.
      */
     public function destroy(InventoryTransaction $inventoryTransaction)
     {
         try {
             DB::transaction(function () use ($inventoryTransaction) {
-                $increasesStock = in_array($inventoryTransaction->transaction_type, ['purchase', 'restock', 'adjustment', 'transfer_in', 'conversion_in']);
+                $type = $inventoryTransaction->transaction_type;
+                if ($type === 'adjustment') {
+                    $notes = (string) $inventoryTransaction->notes;
+                    $isDecrease = str_contains(strtolower($notes), 'decrease') || str_contains(strtolower($notes), 'deduct');
+                    $increasesStock = !$isDecrease;
+                } else {
+                    $increasesStock = in_array($type, ['purchase', 'restock', 'transfer_in', 'conversion_in']);
+                }
+
                 $reverseDelta = $increasesStock ? -$inventoryTransaction->quantity : $inventoryTransaction->quantity;
 
                 $this->applyStockDelta($inventoryTransaction->inventory_item_id, $reverseDelta);

@@ -19,6 +19,7 @@ use App\Models\Topping;
 use App\Models\User;
 use App\Models\UserAddress;
 use App\Services\FirebaseNotificationService;
+use App\Services\InventoryStockService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -301,11 +302,17 @@ class POSController extends Controller
 
             $subtotal = 0;
             $orderItemsData = [];
+            $itemsToValidate = [];
 
             if ($cart && $cart->items->count() > 0) {
                 foreach ($cart->items as $item) {
                     $itemSubtotal = $item->total_price;
                     $subtotal += $itemSubtotal;
+
+                    $itemsToValidate[] = [
+                        'menu_item_id' => $item->menu_item_id,
+                        'quantity' => $item->quantity,
+                    ];
 
                     $optionsSummary = [];
                     if ($item->size) $optionsSummary[] = $item->size->name;
@@ -335,6 +342,11 @@ class POSController extends Controller
                     $itemSubtotal = $unitPrice * $itemData['quantity'];
                     $subtotal += $itemSubtotal;
 
+                    $itemsToValidate[] = [
+                        'menu_item_id' => $menuItem->id,
+                        'quantity' => $itemData['quantity'],
+                    ];
+
                     $orderItemsData[] = [
                         'menu_item_id' => $menuItem->id,
                         'item_name' => $menuItem->name,
@@ -351,6 +363,12 @@ class POSController extends Controller
                         'options_summary' => null,
                     ];
                 }
+            }
+
+            // Strictly validate branch stock before creating POS order
+            $targetBranchId = $validated['branch_id'] ?? auth()->user()?->branch_id;
+            if (!empty($targetBranchId)) {
+                InventoryStockService::validateStockForItems((int) $targetBranchId, $itemsToValidate);
             }
 
             $vat = $subtotal > 0 ? 2.00 : 0.00;

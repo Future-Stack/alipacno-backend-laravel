@@ -1,0 +1,703 @@
+{
+	"info": {
+		"_postman_id": "9f7a8b6c-5432-4890-bc12-pacinos-inventory-v1",
+		"name": "Pacino's HQ - Dedicated Inventory Management API Collection",
+		"description": "Clean, script-free Postman Collection for testing all Inventory, Items-Conversions, Stock Management, Audit Logs, Suppliers, BOM Recipes, and Branch Distribution features.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://api.pacinos.uk/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "PASTE_YOUR_BEARER_TOKEN_HERE",
+			"type": "string"
+		},
+		{
+			"key": "branch_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "raw_item_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "prepared_item_id",
+			"value": "2",
+			"type": "string"
+		},
+		{
+			"key": "category_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "supplier_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "recipe_id",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "0. Authentication",
+			"item": [
+				{
+					"name": "Login (Get Token)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"hqadmin@restaurant.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "1. Inventory Categories",
+			"item": [
+				{
+					"name": "List Inventory Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-categories?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-categories"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Inventory Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"name\": \"Raw Meat & Poultry\",\n    \"description\": \"Fresh uncooked meats, beef, chicken, patties\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-categories",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-categories"]
+						}
+					}
+				},
+				{
+					"name": "Get Inventory Category Detail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-categories/{{category_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-categories", "{{category_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Inventory Items & Yield Conversions",
+			"item": [
+				{
+					"name": "Add New Raw Material (Minced Beef)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"category_id\": {{category_id}},\n    \"type\": \"raw_material\",\n    \"name\": \"Minced Beef (80/20 Blend)\",\n    \"sku\": \"RM-BEEF-001\",\n    \"quantity\": 100.0,\n    \"unit\": \"kg\",\n    \"purchase_price\": 4.50,\n    \"minimum_stock\": 15.0,\n    \"description\": \"Fresh raw minced beef for burger preparation\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-items",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items"]
+						}
+					}
+				},
+				{
+					"name": "Add New Prepared Item with Conversion Ratio (Burger Patties)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"category_id\": {{category_id}},\n    \"type\": \"prepared\",\n    \"name\": \"Burger Patties (4oz)\",\n    \"sku\": \"PR-PATTY-001\",\n    \"made_from_item_id\": {{raw_item_id}},\n    \"pack_size\": 7.0,\n    \"pack_unit\": \"kg\",\n    \"yield_qty\": 50.0,\n    \"yield_unit\": \"pcs\",\n    \"quantity\": 0.0,\n    \"unit\": \"pcs\",\n    \"purchase_price\": 1.20,\n    \"selling_price\": 2.50,\n    \"minimum_stock\": 40.0,\n    \"description\": \"4oz prepared patties. Ratio: 7kg raw beef yields 50 patties.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-items",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items"]
+						}
+					}
+				},
+				{
+					"name": "List Inventory Items (Filtered by Branch)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-items?branch_id={{branch_id}}&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "low_stock_only",
+									"value": "false",
+									"disabled": true
+								},
+								{
+									"key": "type",
+									"value": "raw_material",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "low_stock",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "Beef",
+									"disabled": true
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Inventory Item Detail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-items/{{raw_item_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "{{raw_item_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Update Inventory Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Minced Beef (80/20 Premium)\",\n    \"minimum_stock\": 20.0,\n    \"purchase_price\": 4.75\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-items/{{raw_item_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "{{raw_item_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Inventory Summary KPIs (/summary)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-items/summary?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "summary"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Inventory Analytics & Turnover (/analytics)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-items/analytics?branch_id={{branch_id}}&period=week",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "analytics"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "period",
+									"value": "week"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Export Inventory CSV (/export)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "text/csv"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-items/export?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "export"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Distribute Item to Another Branch",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": 2,\n    \"quantity\": 15.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-items/{{raw_item_id}}/distribute",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-items", "{{raw_item_id}}", "distribute"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Stock Conversions (Raw -> Prepared)",
+			"item": [
+				{
+					"name": "1. Live Preview Conversion Yield (/calculate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"inventory_item_id\": {{raw_item_id}},\n    \"converted_item_id\": {{prepared_item_id}},\n    \"quantity\": 14.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-conversions/calculate",
+							"host": ["{{base_url}}"],
+							"path": ["stock-conversions", "calculate"]
+						}
+					}
+				},
+				{
+					"name": "2. Execute Conversion (/convert)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"prepared_item_id\": {{prepared_item_id}},\n    \"packs\": 2.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-conversions/convert",
+							"host": ["{{base_url}}"],
+							"path": ["stock-conversions", "convert"]
+						}
+					}
+				},
+				{
+					"name": "List Stock Conversions Log",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/stock-conversions?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["stock-conversions"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Inventory Transactions & Audit Trail",
+			"item": [
+				{
+					"name": "List Transaction Logs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory-transactions?branch_id={{branch_id}}&per_page=20",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-transactions"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "per_page",
+									"value": "20"
+								},
+								{
+									"key": "transaction_type",
+									"value": "purchase",
+									"disabled": true
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Stock In / Purchase Raw Material (With Supplier)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"inventory_item_id\": {{raw_item_id}},\n    \"supplier_id\": {{supplier_id}},\n    \"transaction_type\": \"purchase\",\n    \"quantity\": 50.0,\n    \"notes\": \"Supplier Batch Delivery #SUP-9901\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-transactions",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-transactions"]
+						}
+					}
+				},
+				{
+					"name": "Manual Stock Adjustment (+Add / -Deduct)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"inventory_item_id\": {{prepared_item_id}},\n    \"transaction_type\": \"adjustment\",\n    \"adjustment_type\": \"add\",\n    \"quantity\": 10.0,\n    \"notes\": \"Physical stock count adjustment\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-transactions",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-transactions"]
+						}
+					}
+				},
+				{
+					"name": "Record Waste / Spoilage",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"inventory_item_id\": {{prepared_item_id}},\n    \"transaction_type\": \"waste\",\n    \"quantity\": 3.0,\n    \"notes\": \"Dropped on kitchen floor during prep\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory-transactions",
+							"host": ["{{base_url}}"],
+							"path": ["inventory-transactions"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Suppliers Management",
+			"item": [
+				{
+					"name": "List Suppliers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/suppliers?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["suppliers"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Supplier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"name\": \"London Premium Meats Ltd\",\n    \"email\": \"orders@londonmeats.co.uk\",\n    \"phone\": \"+44 20 7946 0991\",\n    \"address\": \"42 Smithfield Meat Market, London EC1A 9LQ\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/suppliers",
+							"host": ["{{base_url}}"],
+							"path": ["suppliers"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "6. Recipes & Bill of Materials (BOM)",
+			"item": [
+				{
+					"name": "List Recipes",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/recipes?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["recipes"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Recipe for Menu Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Pacino's Double Cheeseburger Recipe\",\n    \"branch_id\": {{branch_id}},\n    \"menu_item_id\": 1,\n    \"ingredients\": [\n        {\n            \"inventory_item_id\": {{prepared_item_id}},\n            \"quantity\": 2.0,\n            \"unit\": \"pcs\"\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/recipes",
+							"host": ["{{base_url}}"],
+							"path": ["recipes"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

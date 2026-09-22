@@ -125,15 +125,21 @@ class StockConversionController extends Controller
 
         try {
             DB::transaction(function () use ($stockConversion, $validated, $newSourceId, $newTargetId, $newQuantity) {
-                // Reverse the previous conversion's effect on stock.
-                $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
-                $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
+                if ((int) $newSourceId === (int) $stockConversion->inventory_item_id && (int) $newTargetId === (int) $stockConversion->converted_item_id) {
+                    $qtyDiff = round((float) $newQuantity - (float) $stockConversion->quantity, 4);
+                    if ($qtyDiff !== 0.0) {
+                        $this->applyStockDelta($newSourceId, -$qtyDiff);
+                        $this->applyStockDelta($newTargetId, $qtyDiff);
+                    }
+                } else {
+                    // Reverse the previous conversion's effect on stock.
+                    $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
+                    $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
 
-                // Apply the new conversion's effect on stock. If the source
-                // doesn't have enough after the reversal above, this throws
-                // and the whole transaction (including the reversal) rolls back.
-                $this->applyStockDelta($newSourceId, -$newQuantity);
-                $this->applyStockDelta($newTargetId, $newQuantity);
+                    // Apply the new conversion's effect on stock.
+                    $this->applyStockDelta($newSourceId, -$newQuantity);
+                    $this->applyStockDelta($newTargetId, $newQuantity);
+                }
 
                 $stockConversion->update($validated);
             });
@@ -152,8 +158,17 @@ class StockConversionController extends Controller
     {
         try {
             DB::transaction(function () use ($stockConversion) {
+                // Restore source item stock
                 $this->applyStockDelta($stockConversion->inventory_item_id, $stockConversion->quantity);
-                $this->applyStockDelta($stockConversion->converted_item_id, -$stockConversion->quantity);
+
+                // Deduct target item stock up to what is available on-hand
+                $targetItem = InventoryItem::where('id', $stockConversion->converted_item_id)->lockForUpdate()->first();
+                if ($targetItem) {
+                    $deductQty = min((float) $targetItem->quantity, (float) $stockConversion->quantity);
+                    if ($deductQty > 0) {
+                        $this->applyStockDelta($stockConversion->converted_item_id, -$deductQty);
+                    }
+                }
 
                 $stockConversion->delete();
             });
@@ -161,10 +176,7 @@ class StockConversionController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Stock conversion deleted successfully.'
-        ], 200);
+        return response()->noContent();
     }
 
     /**

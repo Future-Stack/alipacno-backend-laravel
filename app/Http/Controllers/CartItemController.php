@@ -7,6 +7,7 @@ use App\Models\CartItem;
 use App\Models\MenuItem;
 use App\Models\ItemSize;
 use App\Models\Topping;
+use App\Services\InventoryStockService;
 use Illuminate\Http\Request;
 
 class CartItemController extends Controller
@@ -44,6 +45,25 @@ class CartItemController extends Controller
 
         $quantity = $validated['quantity'] ?? 1;
         $menuItem = MenuItem::findOrFail($validated['menu_item_id']);
+        $cart = Cart::find($validated['cart_id']);
+
+        // Check for existing identical cart item
+        $existingItem = CartItem::where('cart_id', $validated['cart_id'])
+            ->where('menu_item_id', $validated['menu_item_id'])
+            ->where('size_id', $validated['size_id'] ?? null)
+            ->where('cooking_preference_id', $validated['cooking_preference_id'] ?? null)
+            ->where('spice_level_id', $validated['spice_level_id'] ?? null)
+            ->first();
+
+        $targetQuantity = $existingItem ? ($existingItem->quantity + $quantity) : $quantity;
+
+        // Branch-wise stock validation if cart is scoped to a branch
+        $branchId = $cart?->branch_id ?? $request->input('branch_id');
+        if (!empty($branchId)) {
+            InventoryStockService::validateStockForItems((int) $branchId, [
+                ['menu_item_id' => $validated['menu_item_id'], 'quantity' => $targetQuantity]
+            ]);
+        }
 
         $unitPrice = $menuItem->price;
         if (!empty($validated['size_id'])) {
@@ -60,14 +80,6 @@ class CartItemController extends Controller
                 $unitPrice += $topping->price;
             }
         }
-
-        // Check for existing identical cart item
-        $existingItem = CartItem::where('cart_id', $validated['cart_id'])
-            ->where('menu_item_id', $validated['menu_item_id'])
-            ->where('size_id', $validated['size_id'] ?? null)
-            ->where('cooking_preference_id', $validated['cooking_preference_id'] ?? null)
-            ->where('spice_level_id', $validated['spice_level_id'] ?? null)
-            ->first();
 
         if ($existingItem) {
             $newQty = $existingItem->quantity + $quantity;
@@ -131,6 +143,15 @@ class CartItemController extends Controller
                 $cartItem->delete();
                 return response()->json(null, 204);
             }
+
+            // Validate stock if cart has a branch
+            $branchId = $cartItem->cart?->branch_id ?? $request->input('branch_id');
+            if (!empty($branchId)) {
+                InventoryStockService::validateStockForItems((int) $branchId, [
+                    ['menu_item_id' => $cartItem->menu_item_id, 'quantity' => (int) $validated['quantity']]
+                ]);
+            }
+
             $validated['total_price'] = $cartItem->unit_price * $validated['quantity'];
         }
 
