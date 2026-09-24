@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Staff;
 use App\Models\StaffAttendance;
 use App\Services\StaffAttendanceService;
 use Illuminate\Http\Request;
@@ -141,12 +142,16 @@ class StaffAttendanceController extends Controller
      */
     public function clockIn(Request $request)
     {
+
         $validated = $request->validate([
-            'staff_id' => 'nullable|exists:staff,id',
-            'status' => 'nullable|string|in:present,late',
+            'staff_id' => 'sometimes|exists:staff,id',
+            'status' => 'required|string|in:present,late',
         ]);
 
-        $staffId = $validated['staff_id'] ?? null;
+        $user_id = auth()->id();
+        $staff = Staff::where('user_id', $user_id)->firstOrFail();
+
+        $staffId = $validated['staff_id'] ?? $staff->id;
 
         // Auto-resolve or create linked staff record from authenticated user (e.g. Driver)
         if (!$staffId && $request->user()) {
@@ -194,6 +199,18 @@ class StaffAttendanceController extends Controller
                 'data' => $activeAttendance->load('staff'),
             ], 422);
         }
+
+        // NEW guard
+        $existingToday = StaffAttendance::where('staff_id', $staffId)
+            ->whereDate('clock_in', now()->toDateString())
+            ->exists();
+
+        if ($existingToday) {
+            return response()->json([
+                'message' => 'You have already completed a shift for today. Next eligible clock-in is tomorrow.',
+            ], 422);
+        }
+
 
         $attendance = StaffAttendance::create([
             'staff_id' => $staffId,

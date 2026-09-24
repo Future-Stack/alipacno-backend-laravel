@@ -469,8 +469,17 @@ class StaffPayoutController extends Controller
      */
     public function salaryHistory(Request $request)
     {
-        $user = Auth::user();
-        $staff = Staff::where('user_id', $user?->id)->first();
+        $validated = $request->validate([
+            'staff_id' => 'sometimes|integer|exists:staff,id',
+        ]);
+
+        $staffId = $validated['staff_id'] ?? null;
+
+        if (!$staffId) {
+            $staff = Staff::where('user_id', auth()->id())->first();
+        } else {
+            $staff = Staff::find($staffId);
+        }
 
         if (!$staff) {
             return response()->json(['status' => 404, 'message' => 'Staff profile not found.'], 404);
